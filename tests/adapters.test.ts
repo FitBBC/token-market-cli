@@ -23,7 +23,7 @@ afterAll(() => {
   if (originalHome) process.env.HOME = originalHome;
 });
 
-const config = { baseUrl: 'https://api.tokensapi.cn', apiKey: 'tm-test-key', model: 'glm-5.2' };
+const config = { baseUrl: 'https://api.tokensapi.cn', apiKey: 'tm-test-key', model: 'glm-5.2', contextWindowTokens: 200_000 };
 const context = { setupId: 'setup_123', keyId: 'key_123' };
 
 test('writes Claude Code settings', async () => {
@@ -45,19 +45,30 @@ test('writes Codex TOML provider', async () => {
   expect(text).toContain('experimental_bearer_token = "tm-test-key"');
 });
 
-test('writes WorkBuddy custom model', async () => {
+test('writes WorkBuddy custom model with upstream model id and metadata', async () => {
   const adapter = getAdapter('workbuddy');
   const result = await adapter.writeConfig(config, context);
   const value = JSON.parse(await readFile(result.configPath, 'utf8'));
   expect(value).toHaveLength(1);
-  expect(value[0]).toMatchObject({
-    id: 'tokensmarket-glm-5.2',
+  expect(value[0]).toEqual({
+    id: 'glm-5.2',
+    name: 'Token Market glm-5.2',
     model: 'glm-5.2',
-    vendor: 'Custom',
+    vendor: 'Token Market',
     url: 'https://api.tokensapi.cn/v1/chat/completions',
     apiKey: 'tm-test-key',
+    supportsToolCall: true,
+    supportsImages: false,
+    supportsReasoning: true,
     useCustomProtocol: true,
+    maxInputTokens: 200_000,
+    reasoning: {
+      defaultEffort: 'max',
+      supportedEfforts: ['high', 'max'],
+      canDisableThinking: true,
+    },
   });
+  expect(value[0]).not.toHaveProperty('maxOutputTokens');
 });
 
 test('writes DeepSeek Harness YAML patch and credentials', async () => {

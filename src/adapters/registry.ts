@@ -10,6 +10,7 @@ import {
   openCodeConfigPath,
   workBuddyConfigPath,
 } from './paths.js';
+import { resolveModelCapabilities } from '../models/model-capabilities.js';
 
 const claudeCode = (current: any, config: ToolConfig) => ({
   ...current,
@@ -52,32 +53,36 @@ const codexExtract = (value: any): ToolConfig | null => {
     : null;
 };
 
-const workBuddyEntryId = (model: string) => `tokensmarket-${model}`;
+const workBuddyIsTokenMarket = (item: any) => item?.vendor === 'Token Market' || String(item?.id ?? '').startsWith('tokensmarket-');
 
 const workBuddy = (current: any, config: ToolConfig, context: AdapterContext) => {
   const existing = Array.isArray(current) ? current : [];
+  const capabilities = resolveModelCapabilities(config.model);
   const entry = {
-    id: workBuddyEntryId(config.model),
+    id: config.model,
     name: `Token Market ${config.model}`,
     model: config.model,
-    vendor: 'Custom',
+    vendor: 'Token Market',
     url: `${config.baseUrl}/v1/chat/completions`,
     apiKey: config.apiKey,
     supportsToolCall: true,
     supportsImages: false,
     supportsReasoning: true,
     useCustomProtocol: true,
+    ...(config.contextWindowTokens ? { maxInputTokens: config.contextWindowTokens } : {}),
+    reasoning: capabilities.reasoning,
   };
-  return [...existing.filter((item) => !String(item?.id ?? '').startsWith('tokensmarket-')), entry];
+  return [...existing.filter((item) => !workBuddyIsTokenMarket(item)), entry];
 };
 
 const workBuddyExtract = (value: any): ToolConfig | null => {
-  const entry = Array.isArray(value) ? value.find((item) => String(item?.id ?? '').startsWith('tokensmarket-')) : null;
+  const entry = Array.isArray(value) ? value.find(workBuddyIsTokenMarket) : null;
   return entry?.url
     ? {
         baseUrl: new URL(entry.url).origin,
         apiKey: entry.apiKey,
-        model: entry.model ?? String(entry.id ?? '').replace('tokensmarket-', ''),
+        model: entry.model ?? entry.id,
+        ...(entry.maxInputTokens ? { contextWindowTokens: entry.maxInputTokens } : {}),
       }
     : null;
 };

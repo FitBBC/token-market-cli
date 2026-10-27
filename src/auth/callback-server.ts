@@ -89,11 +89,16 @@ function writeCallbackPage(response: http.ServerResponse, success: boolean, mess
   const title = success ? 'Token Market CLI' : 'Token Market CLI — Authorization failed';
   const script = `
     (function closeTab() {
-      try { window.close(); } catch (_) {}
+      function requestClose() {
+        try { window.close(); } catch (_) {}
+        try { window.open('', '_self').close(); } catch (_) {}
+      }
       try {
         if (window.opener) window.opener.postMessage({ type: 'token-market-cli-callback', success: ${success} }, '*');
       } catch (_) {}
-      setTimeout(function closeAgain() { try { window.close(); } catch (_) {} }, 300);
+      requestClose();
+      setTimeout(requestClose, 200);
+      setTimeout(requestClose, 800);
     })();
   `.trim();
 
