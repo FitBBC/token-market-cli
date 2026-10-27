@@ -11,24 +11,22 @@ import {
   workBuddyConfigPath,
 } from './paths.js';
 
-const claudeCode = (current: any, config: ToolConfig, context: AdapterContext) => ({
+const claudeCode = (current: any, config: ToolConfig) => ({
   ...current,
-  smallModelId: config.model,
+  model: config.model,
   env: {
     ...current?.env,
     ANTHROPIC_BASE_URL: config.baseUrl,
     ANTHROPIC_API_KEY: config.apiKey,
-    ANTHROPIC_MODEL: config.model,
     ANTHROPIC_DEFAULT_HAIKU_MODEL: config.model,
     ANTHROPIC_DEFAULT_OPUS_MODEL: config.model,
     ANTHROPIC_DEFAULT_SONNET_MODEL: config.model,
   },
-  tokensMarketSetup: { setupId: context.setupId, keyId: context.keyId, model: config.model },
 });
 
 const claudeExtract = (value: any): ToolConfig | null =>
   value?.env?.ANTHROPIC_BASE_URL && value?.env?.ANTHROPIC_API_KEY
-    ? { baseUrl: value.env.ANTHROPIC_BASE_URL, apiKey: value.env.ANTHROPIC_API_KEY, model: value?.tokensMarketSetup?.model ?? 'glm-5.2' }
+    ? { baseUrl: value.env.ANTHROPIC_BASE_URL, apiKey: value.env.ANTHROPIC_API_KEY, model: value?.model ?? 'glm-5.2' }
     : null;
 
 const codex = (current: any, config: ToolConfig, context: AdapterContext) => ({
@@ -44,7 +42,6 @@ const codex = (current: any, config: ToolConfig, context: AdapterContext) => ({
       wire_api: 'responses',
     },
   },
-  tokens_market_setup: { setup_id: context.setupId, key_id: context.keyId },
 });
 
 const codexExtract = (value: any): ToolConfig | null => {
@@ -69,7 +66,6 @@ const workBuddy = (current: any, config: ToolConfig, context: AdapterContext) =>
     supportsImages: false,
     supportsReasoning: true,
     useCustomProtocol: true,
-    tokensMarketSetup: { setupId: context.setupId, keyId: context.keyId },
   };
   return [...existing.filter((item) => !String(item?.id ?? '').startsWith('tokensmarket-')), entry];
 };
@@ -103,7 +99,6 @@ const openClaw = (current: any, config: ToolConfig, context: AdapterContext) => 
       },
     },
   },
-  tokensMarketSetup: { setupId: context.setupId, keyId: context.keyId },
 });
 
 const openClawExtract = (value: any): ToolConfig | null => {
@@ -114,6 +109,8 @@ const openClawExtract = (value: any): ToolConfig | null => {
 const openCode = (current: any, config: ToolConfig, context: AdapterContext) => ({
   ...current,
   $schema: current?.$schema ?? 'https://opencode.ai/config.json',
+  model: `tokensmarket/${config.model}`,
+  small_model: `tokensmarket/${config.model}`,
   provider: {
     ...current?.provider,
     tokensmarket: {
@@ -129,7 +126,6 @@ const openCode = (current: any, config: ToolConfig, context: AdapterContext) => 
       },
     },
   },
-  tokensMarketSetup: { setupId: context.setupId, keyId: context.keyId },
 });
 
 const openCodeExtract = (value: any): ToolConfig | null => {
