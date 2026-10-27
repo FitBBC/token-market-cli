@@ -21,8 +21,18 @@ async function checkModels(config: ToolConfig, protocol: 'anthropic-compatible' 
 async function checkChat(config: ToolConfig, protocol: 'anthropic-compatible' | 'openai-compatible' | 'custom', stream: boolean): Promise<VerificationResult> {
   const body =
     protocol === 'anthropic-compatible'
-      ? { model: config.model, max_tokens: 8, messages: [{ role: 'user', content: 'Reply with OK only.' }] }
-      : { model: config.model, max_tokens: 8, messages: [{ role: 'user', content: 'Reply with OK only.' }], stream };
+      ? {
+          model: config.model,
+          max_tokens: 8,
+          stream,
+          messages: [{ role: 'user', content: 'Reply with OK only.' }],
+        }
+      : {
+          model: config.model,
+          max_tokens: 8,
+          messages: [{ role: 'user', content: 'Reply with OK only.' }],
+          stream,
+        };
 
   const response = await fetch(chatUrl(config, protocol), {
     method: 'POST',
@@ -33,8 +43,13 @@ async function checkChat(config: ToolConfig, protocol: 'anthropic-compatible' | 
   if (!response.ok) return result(stream ? 'Streaming chat' : 'Chat request', false, `HTTP ${response.status}`);
   if (!stream) return result(stream ? 'Streaming chat' : 'Chat request', true);
 
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!contentType.includes('text/event-stream')) {
+    return result('Streaming chat', false, `expected text/event-stream but received ${contentType || 'unknown content-type'}`);
+  }
+
   const text = await response.text();
-  const passed = text.includes('data:') && !text.includes('"error"');
+  const passed = /^data:/m.test(text) && !text.includes('"error"');
   return result('Streaming chat', passed, passed ? undefined : 'response was not a valid SSE stream');
 }
 
