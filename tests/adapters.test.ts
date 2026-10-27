@@ -52,7 +52,7 @@ test('writes WorkBuddy custom model with upstream model id and metadata', async 
   expect(value).toHaveLength(1);
   expect(value[0]).toEqual({
     id: 'glm-5.2',
-    name: 'Token Market glm-5.2',
+    name: 'Token Market',
     model: 'glm-5.2',
     vendor: 'Token Market',
     url: 'https://api.tokensapi.cn/v1/chat/completions',

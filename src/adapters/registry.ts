@@ -60,7 +60,7 @@ const workBuddy = (current: any, config: ToolConfig, context: AdapterContext) =>
   const capabilities = resolveModelCapabilities(config.model);
   const entry = {
     id: config.model,
-    name: `Token Market ${config.model}`,
+    name: 'Token Market',
     model: config.model,
     vendor: 'Token Market',
     url: `${config.baseUrl}/v1/chat/completions`,
