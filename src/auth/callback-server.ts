@@ -34,9 +34,8 @@ export function startCallbackServer(options: CallbackOptions = {}): Promise<Call
     const errorDescription = parsed.searchParams.get('error_description');
 
     if (error) {
-      response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' }).end(
-        `Authorization failed: ${errorDescription ?? error}. You can close this tab.`,
-      );
+      writeCallbackPage(response, false, `Authorization failed: ${errorDescription ?? error}.`);
+      const callbackPort = (server.address() as AddressInfo).port;
       server.close();
       resolve(new Error(`authorization failed: ${errorDescription ?? error}`));
       return;
@@ -47,9 +46,7 @@ export function startCallbackServer(options: CallbackOptions = {}): Promise<Call
       return;
     }
 
-    response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' }).end(
-      'Authorization complete. Return to your terminal.',
-    );
+    writeCallbackPage(response, true, 'Authorization complete.');
     const callbackPort = (server.address() as AddressInfo).port;
     server.close();
     resolve(undefined, {
@@ -86,6 +83,48 @@ export function startCallbackServer(options: CallbackOptions = {}): Promise<Call
       });
     });
   });
+}
+
+function writeCallbackPage(response: http.ServerResponse, success: boolean, message: string): void {
+  const title = success ? 'Token Market CLI' : 'Token Market CLI — Authorization failed';
+  const script = `
+    (function closeTab() {
+      try { window.close(); } catch (_) {}
+      try {
+        if (window.opener) window.opener.postMessage({ type: 'token-market-cli-callback', success: ${success} }, '*');
+      } catch (_) {}
+      setTimeout(function closeAgain() { try { window.close(); } catch (_) {} }, 300);
+    })();
+  `.trim();
+
+  response.writeHead(200, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Content-Security-Policy': "default-src 'none'; script-src 'unsafe-inline'",
+  }).end(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(title)}</title>
+</head>
+<body>
+  <main>
+    <h1>${escapeHtml(title)}</h1>
+    <p>${escapeHtml(message)}</p>
+    <p>You can close this tab if it does not close automatically.</p>
+  </main>
+  <script>${script}</script>
+</body>
+</html>
+`);
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 /** Compatibility helper for existing call sites that need a promise directly. */
