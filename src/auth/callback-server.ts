@@ -50,11 +50,12 @@ export function startCallbackServer(options: CallbackOptions = {}): Promise<Call
     response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' }).end(
       'Authorization complete. Return to your terminal.',
     );
+    const callbackPort = (server.address() as AddressInfo).port;
     server.close();
     resolve(undefined, {
       code,
       state: parsed.searchParams.get('state'),
-      port: (server.address() as AddressInfo).port,
+      port: callbackPort,
     });
   });
 
