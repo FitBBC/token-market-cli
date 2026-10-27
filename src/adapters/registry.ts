@@ -16,14 +16,14 @@ const claudeCode = (current: any, config: ToolConfig, context: AdapterContext) =
   env: {
     ...current?.env,
     ANTHROPIC_BASE_URL: config.baseUrl,
-    ANTHROPIC_AUTH_TOKEN: config.apiKey,
+    ANTHROPIC_API_KEY: config.apiKey,
   },
   tokensMarketSetup: { setupId: context.setupId, keyId: context.keyId, model: config.model },
 });
 
 const claudeExtract = (value: any): ToolConfig | null =>
-  value?.env?.ANTHROPIC_BASE_URL && value?.env?.ANTHROPIC_AUTH_TOKEN
-    ? { baseUrl: value.env.ANTHROPIC_BASE_URL, apiKey: value.env.ANTHROPIC_AUTH_TOKEN, model: value?.tokensMarketSetup?.model ?? 'glm-5.3' }
+  value?.env?.ANTHROPIC_BASE_URL && value?.env?.ANTHROPIC_API_KEY
+    ? { baseUrl: value.env.ANTHROPIC_BASE_URL, apiKey: value.env.ANTHROPIC_API_KEY, model: value?.tokensMarketSetup?.model ?? 'glm-5.2' }
     : null;
 
 const codex = (current: any, config: ToolConfig, context: AdapterContext) => ({
@@ -45,7 +45,7 @@ const codex = (current: any, config: ToolConfig, context: AdapterContext) => ({
 const codexExtract = (value: any): ToolConfig | null => {
   const provider = value?.model_providers?.tokensmarket;
   return provider?.base_url
-    ? { baseUrl: provider.base_url, apiKey: value?.model_providers?.tokensmarket?.experimental_bearer_token ?? '', model: value?.model ?? 'glm-5.3' }
+    ? { baseUrl: provider.base_url, apiKey: value?.model_providers?.tokensmarket?.experimental_bearer_token ?? '', model: value?.model ?? 'glm-5.2' }
     : null;
 };
 
@@ -92,7 +92,7 @@ const openClaw = (current: any, config: ToolConfig, context: AdapterContext) => 
         apiKey: config.apiKey,
         api: 'openai-completions',
         models: [
-          { id: 'glm-5.3', name: 'GLM 5.3' },
+          { id: 'glm-5.2', name: 'GLM 5.2' },
           { id: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash' },
         ],
       },
@@ -103,7 +103,7 @@ const openClaw = (current: any, config: ToolConfig, context: AdapterContext) => 
 
 const openClawExtract = (value: any): ToolConfig | null => {
   const provider = value?.models?.providers?.tokensmarket;
-  return provider?.baseUrl && provider?.apiKey ? { baseUrl: provider.baseUrl, apiKey: provider.apiKey, model: 'glm-5.3' } : null;
+  return provider?.baseUrl && provider?.apiKey ? { baseUrl: provider.baseUrl, apiKey: provider.apiKey, model: 'glm-5.2' } : null;
 };
 
 const openCode = (current: any, config: ToolConfig, context: AdapterContext) => ({
@@ -119,7 +119,7 @@ const openCode = (current: any, config: ToolConfig, context: AdapterContext) => 
         apiKey: config.apiKey,
       },
       models: {
-        'glm-5.3': { name: 'GLM 5.3' },
+        'glm-5.2': { name: 'GLM 5.2' },
         'deepseek-v4.1-flash': { name: 'DeepSeek V4.1 Flash' },
       },
     },
@@ -130,7 +130,7 @@ const openCode = (current: any, config: ToolConfig, context: AdapterContext) => 
 const openCodeExtract = (value: any): ToolConfig | null => {
   const provider = value?.provider?.tokensmarket;
   return provider?.options?.baseURL && provider?.options?.apiKey
-    ? { baseUrl: provider.options.baseURL, apiKey: provider.options.apiKey, model: 'glm-5.3' }
+    ? { baseUrl: provider.options.baseURL, apiKey: provider.options.apiKey, model: 'glm-5.2' }
     : null;
 };
 

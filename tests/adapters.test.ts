@@ -23,7 +23,7 @@ afterAll(() => {
   if (originalHome) process.env.HOME = originalHome;
 });
 
-const config = { baseUrl: 'https://api.tokensapi.cn', apiKey: 'tm-test-key', model: 'glm-5.3' };
+const config = { baseUrl: 'https://api.tokensapi.cn', apiKey: 'tm-test-key', model: 'glm-5.2' };
 const context = { setupId: 'setup_123', keyId: 'key_123' };
 
 test('writes Claude Code settings', async () => {
@@ -31,7 +31,7 @@ test('writes Claude Code settings', async () => {
   const result = await adapter.writeConfig(config, context);
   const value = JSON.parse(await readFile(result.configPath, 'utf8'));
   expect(value.env.ANTHROPIC_BASE_URL).toBe('https://api.tokensapi.cn');
-  expect(value.env.ANTHROPIC_AUTH_TOKEN).toBe('tm-test-key');
+  expect(value.env.ANTHROPIC_API_KEY).toBe('tm-test-key');
 });
 
 test('writes Codex TOML provider', async () => {
@@ -51,8 +51,8 @@ test('writes WorkBuddy custom model', async () => {
   const value = JSON.parse(await readFile(result.configPath, 'utf8'));
   expect(value).toHaveLength(1);
   expect(value[0]).toMatchObject({
-    id: 'tokensmarket-glm-5.3',
-    model: 'glm-5.3',
+    id: 'tokensmarket-glm-5.2',
+    model: 'glm-5.2',
     vendor: 'Custom',
     url: 'https://api.tokensapi.cn/v1/chat/completions',
     apiKey: 'tm-test-key',
@@ -79,7 +79,7 @@ test('writes OpenClaw provider schema', async () => {
   const provider = value.models.providers.tokensmarket;
   expect(provider.baseUrl).toBe('https://api.tokensapi.cn/v1');
   expect(provider.api).toBe('openai-completions');
-  expect(provider.models.map((model: any) => model.id)).toEqual(['glm-5.3', 'deepseek-v4.1-flash']);
+  expect(provider.models.map((model: any) => model.id)).toEqual(['glm-5.2', 'deepseek-v4.1-flash']);
 });
 
 test('writes OpenCode provider schema', async () => {
@@ -89,7 +89,7 @@ test('writes OpenCode provider schema', async () => {
   const provider = value.provider.tokensmarket;
   expect(provider.npm).toBe('@ai-sdk/openai-compatible');
   expect(provider.options.baseURL).toBe('https://api.tokensapi.cn/v1');
-  expect(Object.keys(provider.models)).toEqual(['glm-5.3', 'deepseek-v4.1-flash']);
+  expect(Object.keys(provider.models)).toEqual(['glm-5.2', 'deepseek-v4.1-flash']);
 });
 
 test('registers six supported adapters', () => {

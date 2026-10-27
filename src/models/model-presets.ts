@@ -5,7 +5,7 @@ export interface ModelPreset {
 }
 
 export const modelPresets: ModelPreset[] = [
-  { id: 'recommended', displayName: 'GLM 5.3', model: 'glm-5.3' },
+  { id: 'recommended', displayName: 'GLM 5.2', model: 'glm-5.2' },
   { id: 'fast', displayName: 'DeepSeek V4.1 Flash', model: 'deepseek-v4.1-flash' },
 ];
 

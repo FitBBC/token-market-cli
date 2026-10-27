@@ -37,6 +37,6 @@ export abstract class BaseAdapter implements Adapter {
   async verifyConfig(config: ToolConfig): Promise<void> {
     if (!config.baseUrl.startsWith('https://')) throw new Error('base URL must use HTTPS');
     if (!config.apiKey.startsWith('sk-')) throw new Error('invalid Token Market API key');
-    if (!['glm-5.3', 'deepseek-v4.1-flash'].includes(config.model)) throw new Error('unsupported Token Market model');
+    if (!['glm-5.2', 'deepseek-v4.1-flash'].includes(config.model)) throw new Error('unsupported Token Market model');
   }
 }

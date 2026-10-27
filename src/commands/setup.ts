@@ -58,7 +58,7 @@ export async function setup(
   console.log(`Config: ${writeResult.configPath}`);
   if (writeResult.backupPath) console.log(`Backup: ${writeResult.backupPath}`);
 
-  const results = await verifier(config, adapter.protocol, config.model === 'glm-5.3' ? ['models', 'chat', 'stream', 'tool-call'] : ['models', 'chat', 'stream']);
+  const results = await verifier(config, adapter.protocol, config.model === 'glm-5.2' ? ['models', 'chat', 'stream', 'tool-call'] : ['models', 'chat', 'stream']);
   console.log('\nTest results:');
   for (const result of results) console.log(`- ${result.name}: ${result.passed ? 'passed' : `failed${result.detail ? ` (${result.detail})` : ''}`}`);
 
