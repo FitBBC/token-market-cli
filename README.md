@@ -23,7 +23,7 @@ npx tokensmarket keys
 
 ## Platform contract
 
-The authorization API defaults to `https://console-api.tokensapi.cn` (`TOKEN_MARKET_CONSOLE_API_BASE_URL`); gateway requests default to `https://api.tokensapi.cn` (`TOKEN_MARKET_GATEWAY_API_BASE_URL`).
+The authorization API defaults to `https://test.tokensapi.cn/console` (`TOKEN_MARKET_CONSOLE_API_BASE_URL`); gateway requests default to `https://api-test.tokensapi.cn` (`TOKEN_MARKET_GATEWAY_API_BASE_URL`).
 
 The CLI expects these platform endpoints:
 
