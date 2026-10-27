@@ -22,6 +22,7 @@ export interface ToolConfig {
   baseUrl: string;
   apiKey: string;
   model: string;
+  contextWindowTokens?: number;
 }
 
 export interface AdapterContext {

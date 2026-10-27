@@ -21,6 +21,7 @@ const claudeCode = (current: any, config: ToolConfig) => ({
     ANTHROPIC_DEFAULT_HAIKU_MODEL: config.model,
     ANTHROPIC_DEFAULT_OPUS_MODEL: config.model,
     ANTHROPIC_DEFAULT_SONNET_MODEL: config.model,
+    CLAUDE_CODE_MAX_CONTEXT_TOKENS: String(config.contextWindowTokens ?? 200_000),
   },
 });
 

@@ -5,6 +5,7 @@ import { TokenMarketClient } from '../auth/api-client.js';
 import { gatewayApiBaseUrl } from '../config/endpoints.js';
 import { ToolId } from '../types.js';
 import { resolveModel } from '../models/model-presets.js';
+import { resolveContextWindowTokens } from '../models/model-metadata.js';
 import { saveManagedKey } from '../config/managed-keys.js';
 import { verifyTokenMarket } from '../models/verification.js';
 
@@ -22,10 +23,17 @@ export async function setup(
     throw new Error(`${adapter.name} is not installed or not available on PATH.`);
   }
   const apiKeyResult = await authorizeAndExchange(tool, client);
+  const model = resolveModel(modelPreset);
+  const contextWindowTokens = await resolveContextWindowTokens({
+    baseUrl: gatewayApiBaseUrl(),
+    apiKey: apiKeyResult.apiKey,
+    model,
+  });
   const config = {
     baseUrl: gatewayApiBaseUrl(),
     apiKey: apiKeyResult.apiKey,
-    model: resolveModel(modelPreset),
+    model,
+    contextWindowTokens,
   };
 
   let writeResult;
