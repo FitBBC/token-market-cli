@@ -42,6 +42,7 @@ test('writes Codex TOML provider', async () => {
   expect(text).toContain('[model_providers.tokensmarket]');
   expect(text).toContain('base_url = "https://api.tokensapi.cn/v1"');
   expect(text).toContain('wire_api = "responses"');
+  expect(text).toContain('experimental_bearer_token = "tm-test-key"');
 });
 
 test('writes WorkBuddy custom model', async () => {

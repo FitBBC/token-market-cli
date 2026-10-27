@@ -20,6 +20,12 @@ export class DeepSeekHarnessAdapter extends BaseAdapter {
     );
   }
 
+  override async writeConfig(config: ToolConfig, context: import('../types.js').AdapterContext): Promise<import('../types.js').AdapterWriteResult> {
+    const credentialsBackup = await createBackup(deepSeekHarnessCredentialsPath());
+    const result = await super.writeConfig(config, context);
+    return { ...result, backupPath: result.backupPath ?? credentialsBackup};
+  }
+
   override async readConfig(): Promise<ToolConfig | null> {
     try {
       const patch = (yamlLoad(await readFile(await this.configPath(), 'utf8')) as any[]) ?? [];

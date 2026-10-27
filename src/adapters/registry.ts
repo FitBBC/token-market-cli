@@ -11,8 +11,6 @@ import {
   workBuddyConfigPath,
 } from './paths.js';
 
-const tokenMarket = { apiKeyEnv: 'TOKEN_MARKET_API_KEY' };
-
 const claudeCode = (current: any, config: ToolConfig, context: AdapterContext) => ({
   ...current,
   env: {
@@ -37,7 +35,7 @@ const codex = (current: any, config: ToolConfig, context: AdapterContext) => ({
     tokensmarket: {
       name: 'Token Market',
       base_url: `${config.baseUrl}/v1`,
-      env_key: tokenMarket.apiKeyEnv,
+      experimental_bearer_token: config.apiKey,
       wire_api: 'responses',
     },
   },
@@ -47,7 +45,7 @@ const codex = (current: any, config: ToolConfig, context: AdapterContext) => ({
 const codexExtract = (value: any): ToolConfig | null => {
   const provider = value?.model_providers?.tokensmarket;
   return provider?.base_url
-    ? { baseUrl: provider.base_url, apiKey: process.env.TOKEN_MARKET_API_KEY ?? '', model: value?.model ?? 'glm-5.3' }
+    ? { baseUrl: provider.base_url, apiKey: value?.model_providers?.tokensmarket?.experimental_bearer_token ?? '', model: value?.model ?? 'glm-5.3' }
     : null;
 };
 
