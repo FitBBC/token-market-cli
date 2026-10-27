@@ -50,7 +50,11 @@ export class TokenMarketClient {
       );
     }
 
-    return data as T;
+    if (data?.success === false) {
+      throw new TokenMarketApiError(data.message || 'Token Market request failed', response.status, undefined);
+    }
+
+    return (data?.data ?? data) as T;
   }
 }
 
