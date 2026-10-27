@@ -81,7 +81,7 @@ const workBuddyExtract = (value: any): ToolConfig | null => {
     : null;
 };
 
-const openClaw = (current: any, config: ToolConfig, context: AdapterContext) => ({
+const openClaw = (current: any, config: ToolConfig) => ({
   ...current,
   models: {
     ...current?.models,
@@ -97,6 +97,14 @@ const openClaw = (current: any, config: ToolConfig, context: AdapterContext) => 
           { id: 'deepseek-v4.1-flash', name: 'DeepSeek V4.1 Flash' },
         ],
       },
+    },
+  },
+  agents: {
+    ...current?.agents,
+    defaults: {
+      ...current?.agents?.defaults,
+      model: current?.agents?.defaults?.model
+        ?? { primary: `tokensmarket/${config.model}` },
     },
   },
 });

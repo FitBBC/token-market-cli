@@ -80,6 +80,7 @@ test('writes OpenClaw provider schema', async () => {
   expect(provider.baseUrl).toBe('https://api.tokensapi.cn/v1');
   expect(provider.api).toBe('openai-completions');
   expect(provider.models.map((model: any) => model.id)).toEqual(['glm-5.2', 'deepseek-v4.1-flash']);
+  expect(value.agents.defaults.model.primary).toBe('tokensmarket/glm-5.2');
 });
 
 test('writes OpenCode provider schema', async () => {
