@@ -25,7 +25,7 @@ test('saves and lists managed keys without duplicating the key', async () => {
     setupId: 'setup_123',
     configPath: '/tmp/config.json',
     backupPath: null,
-    model: 'glm-5.3',
+    model: 'glm-5.2',
     createdAt: '2026-10-27T00:00:00.000Z',
     revocable: true,
   });

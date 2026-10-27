@@ -32,7 +32,7 @@ export class DeepSeekHarnessAdapter extends BaseAdapter {
       const provider = patch.find((item) => item?.id === 'llm-pi-ai')?.config?.providers?.tokensmarket;
       if (!provider?.baseURL) return null;
       const credentials = (yamlLoad(await readFile(deepSeekHarnessCredentialsPath(), 'utf8')) as Record<string, string>) ?? {};
-      return { baseUrl: provider.baseURL, apiKey: credentials.TOKEN_MARKET_API_KEY ?? '', model: provider.models?.[0]?.id ?? 'glm-5.3' };
+      return { baseUrl: provider.baseURL, apiKey: credentials.TOKEN_MARKET_API_KEY ?? '', model: provider.models?.[0]?.id ?? 'glm-5.2' };
     } catch {
       return null;
     }
@@ -62,7 +62,7 @@ async function writePatch(configPath: string, config: ToolConfig, context: Adapt
           apiKeyEnv: 'TOKEN_MARKET_API_KEY',
           api: 'openai-completions',
           baseURL: `${config.baseUrl}/v1`,
-          models: [{ id: 'glm-5.3' }, { id: 'deepseek-v4.1-flash' }],
+          models: [{ id: 'glm-5.2' }, { id: 'deepseek-v4.1-flash' }],
         },
       },
     },
