@@ -5,6 +5,12 @@ export interface CallbackOptions {
   timeoutMs?: number;
 }
 
+export interface CallbackServer {
+  port: number;
+  waitForResult(): Promise<CallbackResult>;
+  close(): void;
+}
+
 export interface CallbackResult {
   code: string;
   state: string | null;
@@ -13,7 +19,8 @@ export interface CallbackResult {
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 
-export async function waitForCallback(options: CallbackOptions = {}): Promise<CallbackResult> {
+/** Starts the loopback callback server and resolves the port immediately. */
+export function startCallbackServer(options: CallbackOptions = {}): Promise<CallbackServer> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const server = http.createServer((request, response) => {
     if (!request.url || !request.url.startsWith('/callback')) {
@@ -65,18 +72,27 @@ export async function waitForCallback(options: CallbackOptions = {}): Promise<Ca
   }, timeoutMs);
   timer.unref?.();
 
-  await new Promise<void>((resolveFunction, rejectFunction) => {
+  return new Promise((resolveFunction, rejectFunction) => {
     server.once('error', rejectFunction);
     server.listen(0, '127.0.0.1', () => {
-      (settled as any).port = (server.address() as AddressInfo).port;
-      resolveFunction();
+      resolveFunction({
+        port: (server.address() as AddressInfo).port,
+        waitForResult: () => settled,
+        close: () => {
+          clearTimeout(timer);
+          server.close();
+        },
+      });
     });
   });
+}
 
+/** Compatibility helper for existing call sites that need a promise directly. */
+export async function waitForCallback(options: CallbackOptions = {}): Promise<CallbackResult> {
+  const server = await startCallbackServer(options);
   try {
-    return await settled;
+    return await server.waitForResult();
   } finally {
-    clearTimeout(timer);
     server.close();
   }
 }
