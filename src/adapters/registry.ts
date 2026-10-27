@@ -13,10 +13,15 @@ import {
 
 const claudeCode = (current: any, config: ToolConfig, context: AdapterContext) => ({
   ...current,
+  smallModelId: config.model,
   env: {
     ...current?.env,
     ANTHROPIC_BASE_URL: config.baseUrl,
     ANTHROPIC_API_KEY: config.apiKey,
+    ANTHROPIC_MODEL: config.model,
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: config.model,
+    ANTHROPIC_DEFAULT_OPUS_MODEL: config.model,
+    ANTHROPIC_DEFAULT_SONNET_MODEL: config.model,
   },
   tokensMarketSetup: { setupId: context.setupId, keyId: context.keyId, model: config.model },
 });
