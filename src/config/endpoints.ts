@@ -1,5 +1,5 @@
 export function consoleApiBaseUrl(): string {
-  return process.env.TOKEN_MARKET_CONSOLE_API_BASE_URL ?? 'https://test.tokensapi.cn/console';
+  return process.env.TOKEN_MARKET_CONSOLE_API_BASE_URL ?? 'https://console-api-test.tokensapi.cn';
 }
 
 export function gatewayApiBaseUrl(): string {
