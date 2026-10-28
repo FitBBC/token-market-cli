@@ -121,6 +121,13 @@ pub struct DisconnectOutcome {
     pub conflicts: Vec<RestoreConflict>,
     pub remote_disabled: bool,
 }
+/// Safe outcome: local replacement and retiring the previous credential are distinct results.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReconnectOutcome {
+    pub connection: ConnectionSummary,
+    pub old_key_disabled: bool,
+}
 #[derive(Deserialize)]
 struct IssuedKey {
     api_key: String,
@@ -206,6 +213,30 @@ impl ConnectionManager {
         inventory: &ToolInventory,
         path: PathBuf,
     ) -> Result<ConnectionSummary> {
+        Ok(self
+            .establish(context, tool, inventory, path, None)
+            .await?
+            .connection)
+    }
+    pub async fn reconnect(
+        &self,
+        context: ConnectContext,
+        tool: ToolId,
+        expected_key_id: &str,
+        inventory: &ToolInventory,
+        path: PathBuf,
+    ) -> Result<ReconnectOutcome> {
+        self.establish(context, tool, inventory, path, Some(expected_key_id))
+            .await
+    }
+    async fn establish(
+        &self,
+        context: ConnectContext,
+        tool: ToolId,
+        inventory: &ToolInventory,
+        path: PathBuf,
+        replacement: Option<&str>,
+    ) -> Result<ReconnectOutcome> {
         let _guard = self
             .gate
             .try_lock()
@@ -234,8 +265,20 @@ impl ConnectionManager {
             }
         }
         let mut records = self.list()?;
-        if records.iter().any(|r| r.tool == tool) {
-            bail!("已有连接，请使用重新接入操作")
+        let previous = records.iter().find(|r| r.tool == tool).cloned();
+        match (replacement, &previous) {
+            (None, Some(_)) => bail!("已有连接，请使用重新接入操作"),
+            (Some(expected), Some(old)) if old.key_id == expected => {
+                if old.receipts.first().map(|r| &r.path) != Some(&path) {
+                    bail!("配置路径已改变，请先取消原连接后重新接入")
+                }
+                let preview = restore::prepare(old, &DisconnectRequest::default())?;
+                if !preview.conflicts.is_empty() {
+                    bail!("配置含接入后的人工修改，请先取消接入并明确选择冲突处理后重新接入")
+                }
+            }
+            (Some(_), _) => bail!("连接已改变，请刷新后重试"),
+            _ => {}
         }
         if fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
             bail!("工具配置是符号链接，请先确认实际配置路径");
@@ -277,6 +320,7 @@ impl ConnectionManager {
                 &device_id,
                 &key,
                 &mut records,
+                previous.as_ref(),
             )
             .await;
         if let Err(error) = result {
@@ -294,7 +338,26 @@ impl ConnectionManager {
             }
             return Err(error);
         }
-        result
+        let connection = result?;
+        // The exact saved key is retired only after every new file and the durable record commit.
+        // There is one attempt, no retry queue; a cross-account denial never undoes usable setup.
+        let old_key_disabled = if let Some(old) = previous {
+            self.disable_key(
+                &context.session_token,
+                &old.bound_workspace.id,
+                &old.device_id,
+                old.tool,
+                &old.key_id,
+            )
+            .await
+            .is_ok()
+        } else {
+            false
+        };
+        Ok(ReconnectOutcome {
+            connection,
+            old_key_disabled,
+        })
     }
     async fn apply(
         &self,
@@ -306,6 +369,7 @@ impl ConnectionManager {
         device_id: &str,
         key: &IssuedKey,
         records: &mut Vec<ConnectionRecord>,
+        previous: Option<&ConnectionRecord>,
     ) -> Result<ConnectionSummary> {
         if key.bound_workspace.id != context.workspace_id
             || key.owner.id.is_empty()
@@ -343,6 +407,9 @@ impl ConnectionManager {
             created_containers: prepared.created_containers,
         }];
         files.extend(prepared.additional_files);
+        if let Some(previous) = previous {
+            restore::retire_removed_fields(previous, &mut files)?;
+        }
         // Detect external edits during network I/O before staging any configuration mutation.
         let mut receipts = vec![];
         for file in &files {
@@ -373,6 +440,32 @@ impl ConnectionManager {
                 created_containers: file.created_containers.clone(),
             });
         }
+        if let Some(previous) = previous {
+            let baseline = restore::baseline_receipts(previous)?;
+            for receipt in &mut receipts {
+                if let Some(old) = baseline.iter().find(|old| old.path == receipt.path) {
+                    receipt.existed = old.existed;
+                    receipt.backup_path = old.backup_path.clone();
+                    for field in &mut receipt.fields {
+                        if let Some(original) =
+                            old.fields.iter().find(|f| f.pointer == field.pointer)
+                        {
+                            field.before = original.before.clone();
+                        }
+                    }
+                    for field in &old.fields {
+                        if !receipt.fields.iter().any(|f| f.pointer == field.pointer) {
+                            receipt.fields.push(field.clone());
+                        }
+                    }
+                    for container in &old.created_containers {
+                        if !receipt.created_containers.contains(container) {
+                            receipt.created_containers.push(container.clone());
+                        }
+                    }
+                }
+            }
+        }
         let record = ConnectionRecord {
             version: 2,
             tool,
@@ -391,6 +484,7 @@ impl ConnectionManager {
             receipts,
             api_key: key.api_key.clone(),
         };
+        records.retain(|old| old.tool != tool);
         records.push(record.clone());
         let serialized = serde_json::to_vec_pretty(records)?;
         let mut applied = 0;
