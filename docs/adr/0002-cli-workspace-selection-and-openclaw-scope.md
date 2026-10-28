@@ -5,6 +5,10 @@ Date: 2026-10-27
 ## Status
 Accepted
 
+The desktop application's workspace-selection decision is superseded by
+[ADR 0003](0003-desktop-session-and-workspace-binding.md). The terminal CLI flow
+and the OpenClaw/qclaw scope decisions are not changed by that desktop decision.
+
 ## Context
 ADR 0001 chose to bind the CLI API key to the user's default personal workspace to simplify the first release. The platform already models workspaces as an authorization and billing boundary, and users may have access to more than one workspace. A key silently created in an inferred workspace could therefore charge the wrong account or expose the wrong model policy.
 
