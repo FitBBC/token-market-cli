@@ -1,5 +1,7 @@
 //! Desktop tool connections: credentials never cross the native/public-summary boundary.
+mod configuration;
 mod restore;
+use configuration::ConfigDocument;
 
 use crate::{desktop::DesktopIdentity, inventory::ToolInventory, ToolId};
 use anyhow::{bail, Context, Result};
@@ -201,7 +203,7 @@ impl ConnectionManager {
             .try_lock()
             .map_err(|_| anyhow::anyhow!("接入正在进行，请稍候"))?;
         inventory.require_installed(tool)?;
-        if tool != ToolId::ClaudeCode {
+        if !matches!(tool, ToolId::ClaudeCode | ToolId::Codex) {
             bail!("此工具的桌面接入尚未开放")
         }
         if context.session_token.is_empty() || context.workspace_id.is_empty() {
@@ -225,24 +227,28 @@ impl ConnectionManager {
             bail!("已有连接，请使用重新接入操作")
         }
         if fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
-            bail!("Claude Code 配置是符号链接，请先确认实际配置路径");
+            bail!("工具配置是符号链接，请先确认实际配置路径");
         }
         let before = match fs::read(&path) {
             Ok(v) => Some(v),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-            Err(_) => bail!("无法读取 Claude Code 配置"),
+            Err(_) => bail!("无法读取工具配置"),
         };
-        let mut config: Value = match &before {
-            Some(bytes) => {
-                serde_json::from_slice(bytes).context("Claude Code 配置不是有效 JSON，请先修复")?
-            }
-            None => json!({}),
-        };
-        if !config.is_object() || config.get("env").is_some_and(|v| !v.is_object()) {
-            bail!("Claude Code 配置结构无效，请先修复")
-        }
+        let mut config = ConfigDocument::parse(tool, &before)?;
         let device_id = self.device_id()?;
-        let response=self.http.post(format!("{}/api/desktop/connections/keys",self.platform_url.trim_end_matches('/'))).bearer_auth(&context.session_token).header("X-Workspace-Id",&context.workspace_id).json(&json!({"workspace_id":context.workspace_id,"device_id":device_id,"tool":"claude-code"})).timeout(std::time::Duration::from_secs(30)).send().await.context("无法取得接入 Key")?;
+        let response = self
+            .http
+            .post(format!(
+                "{}/api/desktop/connections/keys",
+                self.platform_url.trim_end_matches('/')
+            ))
+            .bearer_auth(&context.session_token)
+            .header("X-Workspace-Id", &context.workspace_id)
+            .json(&json!({"workspace_id":context.workspace_id,"device_id":device_id,"tool":tool}))
+            .timeout(std::time::Duration::from_secs(30))
+            .send()
+            .await
+            .context("无法取得接入 Key")?;
         let status = response.status();
         let body: Value = response.json().await.context("接入服务响应无效")?;
         if !status.is_success() || body["success"] == false {
@@ -285,7 +291,7 @@ impl ConnectionManager {
         tool: ToolId,
         path: &Path,
         before: &Option<Vec<u8>>,
-        config: &mut Value,
+        config: &mut ConfigDocument,
         device_id: &str,
         key: &IssuedKey,
         records: &mut Vec<ConnectionRecord>,
@@ -321,43 +327,7 @@ impl ConnectionManager {
             .and_then(|models| models.iter().find(|model| model["id"] == "glm-5.3"))
             .context("当前 Key 无法使用 glm-5.3，原配置已保留")?
             .clone();
-        let mut fields = vec![];
-        let created_containers = if config.get("env").is_none() {
-            vec!["/env".into()]
-        } else {
-            vec![]
-        };
-        if config.get("env").is_none() {
-            config["env"] = json!({});
-        }
-        let mut values = vec![
-            ("/model", json!("glm-5.3")),
-            ("/env/ANTHROPIC_BASE_URL", json!(self.gateway_url)),
-            ("/env/ANTHROPIC_API_KEY", json!(key.api_key)),
-            ("/env/ANTHROPIC_AUTH_TOKEN", json!(key.api_key)),
-            ("/env/ANTHROPIC_DEFAULT_HAIKU_MODEL", json!("glm-5.3")),
-            ("/env/ANTHROPIC_DEFAULT_OPUS_MODEL", json!("glm-5.3")),
-            ("/env/ANTHROPIC_DEFAULT_SONNET_MODEL", json!("glm-5.3")),
-        ];
-        if let Some(tokens) = model["context_window_tokens"].as_u64().filter(|v| *v > 0) {
-            values.push((
-                "/env/CLAUDE_CODE_MAX_CONTEXT_TOKENS",
-                json!(tokens.to_string()),
-            ));
-        }
-        for (pointer, applied) in values {
-            let original = config.pointer(pointer).cloned();
-            if pointer == "/model" {
-                config["model"] = applied.clone();
-            } else {
-                config["env"][pointer.trim_start_matches("/env/")] = applied.clone();
-            }
-            fields.push(FieldReceipt {
-                pointer: pointer.into(),
-                before: original,
-                applied,
-            });
-        }
+        let prepared = config.apply(&self.gateway_url, &key.api_key, &model)?;
         // Detect external edits during network I/O before staging any configuration mutation.
         let current = match fs::read(path) {
             Ok(v) => Some(v),
@@ -385,7 +355,7 @@ impl ConnectionManager {
             key_id: key.key_id.clone(),
             owner: key.owner.clone(),
             bound_workspace: key.bound_workspace.clone(),
-            protocol: "ANTHROPIC_MESSAGES".into(),
+            protocol: prepared.protocol.into(),
             models: vec!["glm-5.3".into()],
             model_snapshot: vec![model],
             gateway_url: self.gateway_url.clone(),
@@ -394,14 +364,14 @@ impl ConnectionManager {
                 path: path.into(),
                 existed: before.is_some(),
                 backup_path,
-                fields,
-                created_containers,
+                fields: prepared.fields,
+                created_containers: prepared.created_containers,
             }],
             api_key: key.api_key.clone(),
         };
         records.push(record.clone());
         let serialized = serde_json::to_vec_pretty(records)?;
-        atomic_write(path, &serde_json::to_vec_pretty(config)?)?;
+        atomic_write(path, &prepared.bytes)?;
         if atomic_write(&self.directory.join("connections.json"), &serialized).is_err() {
             let rollback = if let Some(bytes) = before {
                 atomic_write(path, bytes)

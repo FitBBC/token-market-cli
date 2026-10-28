@@ -149,29 +149,37 @@
     } catch (error) { if (authenticated && current === generation) feedback(String(error), true); }
     finally { disconnecting = false; if (authenticated && current === generation) render(); }
   }
+  const supportedConnections = {'claude-code':'Claude Code', codex:'Codex CLI'};
+  let launchTool = 'claude-code';
   const dialog = document.createElement('dialog');
-  dialog.innerHTML = '<h3>Claude Code 已接入</h3><p>已配置 GLM-5.3，尚未测试。现有 Claude Code 会话需要退出后重新启动，新终端将读取接入配置。</p><p>模型测试由你另行发起，可能产生少量费用。</p><div class="tool-actions"><button class="primary launch">打开终端运行 Claude Code</button><button class="close">完成</button></div><p class="launch-error" role="status"></p>';
+  dialog.innerHTML = '<h3></h3><p class="restart-notice"></p><p>模型测试由你另行发起，可能产生少量费用。</p><div class="tool-actions"><button class="primary launch">打开终端运行 Claude Code</button><button class="close">完成</button></div><p class="launch-error" role="status"></p>';
   root.append(dialog);
   dialog.querySelector('.close').onclick = () => dialog.close();
   dialog.querySelector('.launch').onclick = async () => {
-    try { await invoke('launch_connected_tool', {tool:'claude-code'}); dialog.close(); }
+    try { await invoke('launch_connected_tool', {tool:launchTool}); dialog.close(); }
     catch(error) { dialog.querySelector('.launch-error').textContent = String(error); }
   };
   window.addEventListener('tokenmarket-connect-request', async event => {
-    if (event.detail.tool !== 'claude-code') return;
+    const tool = event.detail.tool;
+    const name = supportedConnections[tool];
+    if (!name) return;
     event.preventDefault();
     if (connecting || disconnecting) return;
-    if (entries.find(entry => entry.id === 'claude-code')?.connection) {
+    if (entries.find(entry => entry.id === tool)?.connection) {
       feedback('此工具已有配置记录，请通过后续的重新接入操作保留恢复基线。', true); return;
     }
     const actionGeneration = generation;
-    connecting = true; render(); feedback('正在取得当前空间 Key、读取模型目录并保存 Claude Code 配置…');
+    connecting = true; render(); feedback(`正在取得当前空间 Key、读取模型目录并保存 ${name} 配置…`);
     try {
       await invoke('connect_tool', {tool:event.detail.tool});
       if (!authenticated || actionGeneration !== generation) return;
       await refresh(true);
       if (!authenticated || actionGeneration !== generation) return;
-      feedback('Claude Code 已配置 GLM-5.3，尚未测试。');
+      feedback(`${name} 已配置 GLM-5.3，尚未测试。`);
+      launchTool = tool;
+      dialog.querySelector('h3').textContent = `${name} 已接入`;
+      dialog.querySelector('.restart-notice').textContent = `已配置 GLM-5.3，尚未测试。现有 ${name} 会话需要退出后重新启动，新终端将读取接入配置。`;
+      dialog.querySelector('.launch').textContent = `打开终端运行 ${name}`;
       dialog.querySelector('.launch-error').textContent = ''; dialog.showModal();
     } catch(error) { feedback(String(error), true); }
     finally { connecting = false; render(); }
