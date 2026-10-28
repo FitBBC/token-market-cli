@@ -109,8 +109,8 @@ impl InstallationEnvironment {
 #[serde(rename_all = "camelCase")]
 pub struct LegacyConnectionSummary {
     pub state: &'static str,
-    pub owner: Option<String>,
-    pub bound_workspace: Option<String>,
+    pub owner: Option<serde_json::Value>,
+    pub bound_workspace: Option<serde_json::Value>,
     pub models: Vec<String>,
 }
 
@@ -138,6 +138,14 @@ impl ToolInventory {
     }
     pub fn list(&self) -> Result<Vec<ToolInventoryEntry>> {
         let records = self.records()?;
+        let desktop = crate::connections::ConnectionManager::new(
+            self.environment
+                .home
+                .join(".tokensmarket/desktop-connections"),
+            String::new(),
+            String::new(),
+        )
+        .list()?;
         Ok(adapters()
             .into_iter()
             .map(|adapter| {
@@ -149,14 +157,25 @@ impl ToolInventory {
                     can_connect: installed,
                     download_url: official_download_url(adapter.id),
                     config_path: adapter.config_path().display().to_string(),
-                    connection: records.iter().find(|r| r.tool == adapter.id).map(|r| {
-                        LegacyConnectionSummary {
-                            state: "legacy",
-                            owner: None,
-                            bound_workspace: None,
-                            models: vec![r.model.clone()],
-                        }
-                    }),
+                    connection: desktop
+                        .iter()
+                        .find(|r| r.tool == adapter.id)
+                        .map(|r| LegacyConnectionSummary {
+                            state: "configured_untested",
+                            owner: Some(serde_json::json!(r.owner)),
+                            bound_workspace: Some(serde_json::json!(r.bound_workspace)),
+                            models: r.models.clone(),
+                        })
+                        .or_else(|| {
+                            records.iter().find(|r| r.tool == adapter.id).map(|r| {
+                                LegacyConnectionSummary {
+                                    state: "legacy",
+                                    owner: None,
+                                    bound_workspace: None,
+                                    models: vec![r.model.clone()],
+                                }
+                            })
+                        }),
                 }
             })
             .collect())

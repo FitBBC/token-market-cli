@@ -1,3 +1,4 @@
+mod connections;
 mod workspace;
 use serde::Serialize;
 use std::sync::{
@@ -329,6 +330,7 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .manage(SetupState::default())
+        .manage(tokensmarket_core::connections::ConnectionManager::current())
         .manage(workspace::WorkspaceState::new())
         .setup(|app| {
             let api_base = tokensmarket_core::config::console_api_base_url();
@@ -366,6 +368,8 @@ pub fn run() {
             workspace::switch_desktop_workspace,
             workspace::open_desktop_account_page,
             tool_status,
+            connections::connect_tool,
+            connections::launch_connected_tool,
             desktop_tool_inventory,
             prepare_tool_connect,
             download_tool,

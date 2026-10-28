@@ -12,6 +12,7 @@
   };
   let authenticated = false;
   let loading = false;
+  let connecting = false;
   let generation = 0;
   let entries = [];
   root.innerHTML = '<div class="tools-heading"><div><h2>你的 Agent</h2><p>连接本机工具，开始使用 Token Market 模型。</p></div><button class="tools-refresh" type="button">重新检测</button></div><div class="tools-feedback" role="status" aria-live="polite"></div><div class="tools-list"></div>';
@@ -37,7 +38,7 @@
       title.append(text('h3', entry.name), text('span', entry.installed ? '已安装' : '未安装', `tool-badge ${entry.installed ? 'installed' : ''}`));
       content.append(title);
       if (entry.connection) {
-        content.append(text('p', '检测到旧版连接记录 · 账号与计费空间未知', 'tool-description'));
+        content.append(text('p', entry.connection.state === 'legacy' ? '检测到旧版连接记录 · 账号与计费空间未知' : `${entry.connection.owner.name} · 计费空间：${entry.connection.boundWorkspace.name} · 已配置，未测试`, 'tool-description'));
         content.append(text('span', entry.connection.models.join(' · '), 'tool-models'));
       } else {
         content.append(text('p', entry.installed ? '尚未接入 Token Market' : '安装后，点击重新检测即可接入', 'tool-description'));
@@ -53,7 +54,7 @@
         actions.append(download);
       }
       const connect = text('button', entry.connection ? '重新接入' : '接入', 'primary tool-connect');
-      connect.type = 'button'; connect.disabled = !entry.canConnect || loading;
+      connect.type = 'button'; connect.disabled = !entry.canConnect || loading || connecting || (entry.connection?.state === 'configured_untested');
       if (!entry.canConnect) connect.title = '请先安装此工具并重新检测';
       connect.onclick = async () => {
         connect.disabled = true;
@@ -64,7 +65,7 @@
           const event = new CustomEvent('tokenmarket-connect-request', {detail:{tool:entry.id}, cancelable:true});
           if (window.dispatchEvent(event)) feedback('接入功能正在准备中。');
         } catch (error) { feedback(String(error), true); await refresh(); }
-        finally { connect.disabled = !entry.canConnect; }
+        finally { connect.disabled = !entry.canConnect || connecting || (entry.connection?.state === 'configured_untested'); }
       };
       actions.append(connect); row.append(actions); list.append(row);
     });
@@ -84,6 +85,33 @@
       else if (authenticated) refresh();
     }
   }
+  const dialog = document.createElement('dialog');
+  dialog.innerHTML = '<h3>Claude Code 已接入</h3><p>已配置 GLM-5.3，尚未测试。现有 Claude Code 会话需要退出后重新启动，新终端将读取接入配置。</p><p>模型测试由你另行发起，可能产生少量费用。</p><div class="tool-actions"><button class="primary launch">打开终端运行 Claude Code</button><button class="close">完成</button></div><p class="launch-error" role="status"></p>';
+  root.append(dialog);
+  dialog.querySelector('.close').onclick = () => dialog.close();
+  dialog.querySelector('.launch').onclick = async () => {
+    try { await invoke('launch_connected_tool', {tool:'claude-code'}); dialog.close(); }
+    catch(error) { dialog.querySelector('.launch-error').textContent = String(error); }
+  };
+  window.addEventListener('tokenmarket-connect-request', async event => {
+    if (event.detail.tool !== 'claude-code') return;
+    event.preventDefault();
+    if (connecting) return;
+    if (entries.find(entry => entry.id === 'claude-code')?.connection) {
+      feedback('此工具已有配置记录，请通过后续的重新接入操作保留恢复基线。', true); return;
+    }
+    const actionGeneration = generation;
+    connecting = true; render(); feedback('正在取得当前空间 Key、读取模型目录并保存 Claude Code 配置…');
+    try {
+      await invoke('connect_tool', {tool:event.detail.tool});
+      if (!authenticated || actionGeneration !== generation) return;
+      await refresh();
+      if (!authenticated || actionGeneration !== generation) return;
+      feedback('Claude Code 已配置 GLM-5.3，尚未测试。');
+      dialog.querySelector('.launch-error').textContent = ''; dialog.showModal();
+    } catch(error) { feedback(String(error), true); }
+    finally { connecting = false; render(); }
+  });
   refreshButton.onclick = refresh;
   window.addEventListener('focus', refresh);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
@@ -96,7 +124,7 @@
       if (value === authenticated) return;
       authenticated = value; generation += 1;
       if (value) refresh();
-      else { entries = []; list.replaceChildren(); feedback(''); }
+      else { if (dialog.open) dialog.close(); entries = []; list.replaceChildren(); feedback(''); }
     },
   };
 })();
