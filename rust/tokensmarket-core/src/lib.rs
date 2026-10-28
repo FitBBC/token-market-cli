@@ -13,3 +13,5 @@ pub use setup::{run_setup, SetupOutcome, SetupProgress};
 pub mod desktop;
 
 pub mod inventory;
+
+pub mod connections;

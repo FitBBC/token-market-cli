@@ -23,3 +23,7 @@
 .tool-models { display:inline-block; margin-top:7px; padding:2px 7px; border:1px solid #e9e9e9; border-radius:5px; font-size:11px; color:#555; }
 .tool-actions { display:flex; align-items:center; gap:8px; flex:none; }
 @media(max-width:620px) { .tool-row { flex-wrap:wrap; padding:17px; gap:12px; } .tool-actions { width:100%; justify-content:flex-end; } .tools-heading { align-items:flex-start; } }
+
+#tools-region dialog { border:1px solid #ddd; border-radius:18px; padding:28px; max-width:500px; color:inherit; background:var(--panel, #fff); }
+#tools-region dialog::backdrop { background:#0005; }
+#tools-region dialog p { line-height:1.7; }

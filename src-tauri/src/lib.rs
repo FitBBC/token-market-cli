@@ -1,3 +1,4 @@
+mod connections;
 use serde::Serialize;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -323,6 +324,7 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .manage(SetupState::default())
+        .manage(tokensmarket_core::connections::ConnectionManager::current())
         .setup(|app| {
             let api_base = tokensmarket_core::config::console_api_base_url();
             app.manage(DesktopState {
@@ -356,6 +358,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             tool_status,
+            connections::connect_tool,
+            connections::launch_connected_tool,
             desktop_tool_inventory,
             prepare_tool_connect,
             download_tool,
