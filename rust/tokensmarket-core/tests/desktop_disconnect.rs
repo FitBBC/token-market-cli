@@ -586,3 +586,85 @@ async fn version_one_fixture_recovers_only_owned_baseline_values_and_fails_close
         }
     }
 }
+#[tokio::test]
+async fn codex_disconnect_preserves_toml_comments_other_providers_auth_file_and_later_provider_fields(
+) {
+    let root = tempdir().unwrap();
+    let config = root.path().join("config.toml");
+    let inventory = inventory(root.path());
+    std::fs::copy(
+        root.path().join("bin/claude"),
+        root.path().join("bin/codex"),
+    )
+    .unwrap();
+    let original="# personal comment\nmodel_provider = \"other\" # keep inline\nmodel = \"personal-model\"\n[model_providers.other]\nbase_url = \"https://other.example/v1\"\n[model_providers.tokensmarket]\nexperimental_bearer_token = \"previous-secret\"\n";
+    std::fs::write(&config, original).unwrap();
+    let auth = root.path().join("auth.json");
+    std::fs::write(&auth, "auth-file-untouched").unwrap();
+    let (url, server) = platform(json!({"data":[{"id":"glm-5.3"}]}), false).await;
+    let manager = ConnectionManager::new(
+        root.path().join(".tokensmarket/desktop-connections"),
+        url.clone(),
+        url,
+    );
+    manager
+        .connect(context(), ToolId::Codex, &inventory, config.clone())
+        .await
+        .unwrap();
+    server.await.unwrap();
+    let mut edited = std::fs::read_to_string(&config)
+        .unwrap()
+        .parse::<toml_edit::DocumentMut>()
+        .unwrap();
+    edited["model_providers"]["tokensmarket"]["user_added"] = toml_edit::value(true);
+    std::fs::write(&config, edited.to_string()).unwrap();
+    let done = manager
+        .disconnect(ToolId::Codex, "9001", None, DisconnectRequest::default())
+        .await
+        .unwrap();
+    assert_eq!(done.state, "disconnected");
+    let restored = std::fs::read_to_string(&config).unwrap();
+    assert!(restored.contains("# personal comment"));
+    assert!(restored.contains("# keep inline"));
+    let value: Value = toml_edit::de::from_str(&restored).unwrap();
+    assert_eq!(
+        value,
+        json!({"model_provider":"other","model":"personal-model","model_providers":{"other":{"base_url":"https://other.example/v1"},"tokensmarket":{"experimental_bearer_token":"previous-secret","user_added":true}}})
+    );
+    assert_eq!(
+        std::fs::read_to_string(auth).unwrap(),
+        "auth-file-untouched"
+    );
+}
+#[tokio::test]
+async fn newly_created_codex_config_keeps_later_comment_when_managed_fields_are_removed() {
+    let root = tempdir().unwrap();
+    let config = root.path().join("config.toml");
+    let inventory = inventory(root.path());
+    std::fs::copy(
+        root.path().join("bin/claude"),
+        root.path().join("bin/codex"),
+    )
+    .unwrap();
+    let (url, server) = platform(json!({"data":[{"id":"glm-5.3"}]}), false).await;
+    let manager = ConnectionManager::new(
+        root.path().join(".tokensmarket/desktop-connections"),
+        url.clone(),
+        url,
+    );
+    manager
+        .connect(context(), ToolId::Codex, &inventory, config.clone())
+        .await
+        .unwrap();
+    server.await.unwrap();
+    let configured = std::fs::read_to_string(&config).unwrap();
+    std::fs::write(&config, format!("# later personal note\n{configured}")).unwrap();
+    manager
+        .disconnect(ToolId::Codex, "9001", None, DisconnectRequest::default())
+        .await
+        .unwrap();
+    assert_eq!(
+        std::fs::read_to_string(config).unwrap().trim(),
+        "# later personal note"
+    );
+}

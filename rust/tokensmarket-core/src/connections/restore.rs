@@ -122,10 +122,18 @@ pub(super) fn prepare(
         }
         change.after = if original == value {
             change.before.clone()
-        } else if !receipt.existed && empty_container(&value, None) {
-            None
         } else {
-            Some(format.render(change.before.as_deref(), &value, &touched)?)
+            let rendered = format.render(change.before.as_deref(), &value, &touched)?;
+            // A later standalone TOML comment is user content even if every managed key is gone.
+            let comment_remains = matches!(format, Format::Toml)
+                && std::str::from_utf8(&rendered)?
+                    .lines()
+                    .any(|line| line.trim_start().starts_with('#'));
+            if !receipt.existed && empty_container(&value, None) && !comment_remains {
+                None
+            } else {
+                Some(rendered)
+            }
         };
     }
     Ok(RestorePlan {
@@ -268,7 +276,26 @@ impl Format {
                     let path = tokens(pointer)?;
                     edit_toml(document.as_item_mut(), &path, lookup(value, &path)?)?;
                 }
-                Ok(document.to_string().into_bytes())
+                let mut rendered = document.to_string();
+                let source = std::str::from_utf8(bytes.unwrap_or(b""))?;
+                let mut missing = String::new();
+                let mut remaining: Vec<&str> = rendered.lines().collect();
+                for comment in source
+                    .lines()
+                    .filter(|line| line.trim_start().starts_with('#'))
+                {
+                    if let Some(index) = remaining.iter().position(|line| *line == comment) {
+                        remaining.remove(index);
+                    } else {
+                        missing.push_str(comment);
+                        missing.push('\n');
+                    }
+                }
+                if !missing.is_empty() {
+                    missing.push_str(&rendered);
+                    rendered = missing;
+                }
+                Ok(rendered.into_bytes())
             }
         }
     }
@@ -289,7 +316,11 @@ fn edit_toml(
             ) {
                 *new.decor_mut() = old.decor().clone();
             }
-            table.insert(key, next);
+            if let Some(existing) = table.get_mut(key) {
+                *existing = next;
+            } else {
+                table.insert(key, next);
+            }
         } else {
             table.remove(key);
         }
