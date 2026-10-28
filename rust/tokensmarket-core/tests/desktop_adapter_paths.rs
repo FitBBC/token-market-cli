@@ -78,7 +78,7 @@ fn workbuddy_inventory_uses_the_installed_product_config_directory_and_explicit_
 }
 
 #[tokio::test]
-async fn opencode_uses_existing_jsonc_and_fails_closed_without_creating_a_competing_json_file() {
+async fn opencode_uses_existing_jsonc_and_preserves_it_when_platform_is_unavailable() {
     use tokensmarket_core::connections::{ConnectContext, ConnectionManager};
     let root = tempdir().unwrap();
     let bin = root.path().join("bin");
@@ -127,7 +127,7 @@ async fn opencode_uses_existing_jsonc_and_fails_closed_without_creating_a_compet
         .await
         .is_err());
     assert!(!directory.join("opencode.json").exists());
-    assert!(!root.path().join("state").exists());
+    assert!(manager.list().unwrap().is_empty());
     assert_eq!(std::fs::read_to_string(jsonc).unwrap(), original);
 }
 

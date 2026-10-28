@@ -159,7 +159,7 @@ async fn workbuddy_imports_all_compatible_models_and_restores_only_owned_fields_
         );
         assert_eq!(
             rows[1],
-            json!({"id":"vendor/zeta~1","name":"Zeta","url":format!("{url}/v1/chat/completions"),"apiKey":"sk-fixture","vendor":"Token Market","useCustomProtocol":true,"isDefault":false})
+            json!({"id":"vendor/zeta~1","name":"Zeta","url":format!("{url}/v1/chat/completions"),"apiKey":"sk-fixture","vendor":"Token Market","useCustomProtocol":true})
         );
         assert!(rows[2].get("supportsToolCall").is_none());
         assert!(rows[2].get("defaultEffort").is_none());
@@ -509,4 +509,82 @@ async fn reconnect_all_three_retires_obsolete_models_and_preserves_the_first_bas
         assert_eq!(read(&path), expected);
         assert_eq!(server.await.unwrap().len(), 5);
     }
+}
+
+#[tokio::test]
+async fn workbuddy_existing_default_survives_connect_and_reconnect() {
+    let root = tempdir().unwrap();
+    let inventory = inventory(root.path());
+    let path = root.path().join("models.json");
+    std::fs::write(&path, r#"[{"id":"alpha","isDefault":true}]"#).unwrap();
+    let catalogue = json!({"data":[{"id":"alpha","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"beta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]});
+    let (url, server) = platform_sequence(vec![catalogue.clone(), catalogue], 5).await;
+    let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+    manager
+        .connect(context(), ToolId::WorkBuddy, &inventory, path.clone())
+        .await
+        .unwrap();
+    assert_eq!(read(&path)[0]["isDefault"], true);
+    assert!(read(&path)[1].get("isDefault").is_none());
+    manager
+        .reconnect(
+            context(),
+            ToolId::WorkBuddy,
+            "9001",
+            &inventory,
+            path.clone(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(read(&path)[0]["isDefault"], true);
+    assert!(read(&path)[1].get("isDefault").is_none());
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn opencode_jsonc_keeps_comments_filename_and_manual_settings_through_replacement_and_restore(
+) {
+    use tokensmarket_core::connections::DisconnectRequest;
+    let root = tempdir().unwrap();
+    let inv = inventory(root.path());
+    let path = root.path().join("opencode.jsonc");
+    std::fs::write(&path, "{\n // original comment\n \"model\": \"other/model\",\n \"provider\": {\n  /* provider note */ \"other\": {\"custom\": true,},\n },\n}\n").unwrap();
+    let catalogue =
+        json!({"data":[{"id":"alpha","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]});
+    let (url, server) = platform_sequence(vec![catalogue.clone(), catalogue], 5).await;
+    let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+    manager
+        .connect(context(), ToolId::OpenCode, &inv, path.clone())
+        .await
+        .unwrap();
+    let configured = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        configured.contains("// original comment") && configured.contains("/* provider note */")
+    );
+    // A later unknown setting and comment survive both refresh and removal.
+    std::fs::write(
+        &path,
+        configured.replacen('{', "{\n // later comment\n \"later\": [1,2,],", 1),
+    )
+    .unwrap();
+    manager
+        .reconnect(context(), ToolId::OpenCode, "9001", &inv, path.clone())
+        .await
+        .unwrap();
+    manager
+        .disconnect(ToolId::OpenCode, "9002", None, DisconnectRequest::default())
+        .await
+        .unwrap();
+    let restored = std::fs::read_to_string(&path).unwrap();
+    for comment in [
+        "// original comment",
+        "/* provider note */",
+        "// later comment",
+    ] {
+        assert!(restored.contains(comment), "{restored}");
+    }
+    assert!(restored.contains("\"later\": [1,2,]"));
+    assert!(restored.contains("other/model") && restored.contains("\"custom\": true"));
+    assert!(!restored.contains("tokensmarket") && !path.with_extension("json").exists());
+    server.await.unwrap();
 }

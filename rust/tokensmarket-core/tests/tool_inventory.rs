@@ -145,3 +145,43 @@ fn windows_inventory_recognizes_pathext_launchers_and_installed_desktop_executab
         .require_installed(ToolId::Codex)
         .is_err());
 }
+
+#[test]
+fn launch_plan_uses_fresh_windows_cmd_directory_without_interpolating_its_shell_characters() {
+    let root = tempfile::tempdir().unwrap();
+    let mut old = environment(root.path(), HostPlatform::Windows);
+    let newly_installed = root.path().join("new install & plugins");
+    executable(&newly_installed.join("OPENCLAW.CMD"));
+    assert!(ToolInventory::new(old.clone())
+        .launch_plan(ToolId::OpenClaw)
+        .is_err());
+    old.command_directories.insert(0, newly_installed.clone());
+    let plan = ToolInventory::new(old)
+        .launch_plan(ToolId::OpenClaw)
+        .unwrap();
+    assert_eq!(plan.program, "cmd");
+    assert_eq!(plan.args, ["/c", "start", "", "cmd", "/k", "openclaw tui"]);
+    assert!(plan.environment[0]
+        .1
+        .starts_with(&newly_installed.to_string_lossy().to_string()));
+    assert!(!plan.args.iter().any(|v| v.contains("plugins")));
+    assert!(!plan.wait_for_exit);
+}
+
+#[cfg(unix)]
+#[test]
+fn macos_launch_plan_uses_nvm_target_and_quotes_paths_for_terminal_and_applescript() {
+    let root = tempfile::tempdir().unwrap();
+    let mut env = environment(root.path(), HostPlatform::MacOs);
+    let directory = root
+        .path()
+        .join(".nvm/versions/node/v22 'quoted' & new/bin");
+    executable(&directory.join("codex"));
+    env.command_directories.insert(0, directory.clone());
+    let plan = ToolInventory::new(env).launch_plan(ToolId::Codex).unwrap();
+    assert_eq!(plan.program, "osascript");
+    assert!(plan.args[3].contains("v22") && plan.args[3].contains("codex"));
+    assert!(plan.args[3].contains("'\\\"'\\\"'quoted'\\\"'\\\"'"));
+    assert!(plan.args[3].contains("env PATH="));
+    assert!(plan.wait_for_exit);
+}

@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-用一条命令为常用 AI Agent 工具配置 Token Market。同一套安装流程提供终端 CLI 和引导式桌面应用两种入口。
+通过终端配置 Token Market，或在桌面端登录一次后持续管理六种本机 Agent。终端按每次 setup 进行授权；桌面登录后进入平台 Default Workspace，点击接入时才签发独立的设备/工具 Key。详见[桌面登录](docs/desktop-login.md)与[桌面管理](docs/desktop-management.md)。
 
 ## 安装
 
@@ -42,7 +42,11 @@ xattr -cr "/Applications/Token Market Setup.app"
 
 然后正常打开应用。
 
-## 快速开始
+## 桌面端快速开始
+
+在浏览器登录后通过 **Open Application** 返回桌面端。查看余额或切换 Current Workspace，然后接入已安装工具。工具卡片保留所属账号与 Bound Workspace。接入不自动调用付费模型；**测试**是独立动作，需要先确认可能产生的费用。
+
+## 终端快速开始
 
 不带参数运行 setup，会交互式列出可安装工具：
 
@@ -139,12 +143,14 @@ tokensmarket keys
 
 ## 安全、备份与撤销
 
-- 授权使用 PKCE，并通过 `http://127.0.0.1` 上的一次性本地回调完成。
-- 浏览器授权页允许已登录用户选择该 CLI API Key 所属的 workspace。
+- 终端 CLI 授权使用 PKCE，并通过 `http://127.0.0.1` 上的一次性本地回调完成。
+- 终端 CLI 浏览器授权页允许已登录用户选择该 CLI API Key 所属的 workspace。
 - 在 Unix-like 系统上，工具配置和凭据文件会以仅文件所有者可访问的权限写入。Windows 上隐私由用户配置目录和父目录 ACL 保证。
 - 修改已有配置前，CLI 会先复制备份到 `~/.tokensmarket/backups/`。
 - 本地 Key 登记文件位于 `~/.tokensmarket/keys.json`，只记录元数据，不会替代工具配置。
 - 对同一工具重新安装会替换本地管理记录。如果不再希望某个 Key 继续生效，请在 Token Market 控制台撤销该 Key。
+
+桌面登录使用 PKCE 与已注册的应用协议进行一次性回调，登录阶段不选择空间、不签发工具 Key。桌面凭证私密存储、字段级恢复、精确 Key 清理与测试边界见[桌面管理](docs/desktop-management.md)。
 
 ## 架构
 

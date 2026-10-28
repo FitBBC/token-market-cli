@@ -41,7 +41,7 @@ pub(super) fn baseline_receipts(record: &ConnectionRecord) -> Result<Vec<super::
                     .as_ref()
                     .context("旧连接缺少原始恢复基线")?;
                 Some(
-                    Format::for_path(&receipt.path)?
+                    Format::for_tool(record.tool, &receipt.path)?
                         .parse(Some(&read(backup)?.context("旧连接恢复基线不可读")?))?,
                 )
             } else {
@@ -70,7 +70,7 @@ pub(super) fn retire_removed_fields(
             .iter_mut()
             .find(|f| f.path == old.path)
             .context("重新接入的配置文件集合已改变，请先取消原连接")?;
-        let format = Format::for_path(&file.path)?;
+        let format = Format::for_tool(record.tool, &file.path)?;
         let mut value = format.parse(Some(&file.bytes))?;
         let mut touched = vec![];
         for field in &old.fields {
@@ -131,7 +131,7 @@ pub(super) fn prepare(
     let approved = request.revision.as_ref() == Some(&revision);
     let mut conflicts = vec![];
     for (file, (receipt, change)) in record.receipts.iter().zip(changes.iter_mut()).enumerate() {
-        let format = Format::for_path(&receipt.path)?;
+        let format = Format::for_tool(record.tool, &receipt.path)?;
         let mut value = format.parse(change.before.as_deref())?;
         let original = value.clone();
         // Version 1 serialized missing and explicit null identically. Recover ONLY the owned
@@ -202,10 +202,12 @@ pub(super) fn prepare(
         } else {
             let rendered = format.render(change.before.as_deref(), &value, &touched)?;
             // A later standalone TOML comment is user content even if every managed key is gone.
-            let comment_remains = matches!(format, Format::Toml)
-                && std::str::from_utf8(&rendered)?
-                    .lines()
-                    .any(|line| line.trim_start().starts_with('#'));
+            let comment_remains = (matches!(format, Format::Jsonc)
+                && super::jsonc::has_comments(&rendered)?)
+                || matches!(format, Format::Toml)
+                    && std::str::from_utf8(&rendered)?
+                        .lines()
+                        .any(|line| line.trim_start().starts_with('#'));
             if !receipt.existed && empty_container(&value, None) && !comment_remains {
                 None
             } else {
@@ -321,13 +323,22 @@ fn set_path(value: &mut Value, path: &[String], replacement: Option<Value>) -> R
 }
 enum Format {
     Json,
+    Jsonc,
     Toml,
     Yaml,
 }
 impl Format {
+    fn for_tool(tool: crate::ToolId, path: &Path) -> Result<Self> {
+        if tool == crate::ToolId::OpenCode {
+            Ok(Self::Jsonc)
+        } else {
+            Self::for_path(path)
+        }
+    }
     fn for_path(path: &Path) -> Result<Self> {
         match path.extension().and_then(|v| v.to_str()) {
-            Some("json" | "jsonc") => Ok(Self::Json),
+            Some("json") => Ok(Self::Json),
+            Some("jsonc") => Ok(Self::Jsonc),
             Some("toml") => Ok(Self::Toml),
             Some("yaml" | "yml") => Ok(Self::Yaml),
             _ => bail!("不支持安全恢复此配置格式"),
@@ -338,6 +349,7 @@ impl Format {
             return Ok(json!({}));
         };
         let result: Value = match self {
+            Self::Jsonc => super::jsonc::parse(bytes)?,
             Self::Json => serde_json::from_slice(bytes).context("配置不是有效 JSON，未执行恢复")?,
             Self::Yaml => serde_yaml::from_slice(bytes).context("配置不是有效 YAML，未执行恢复")?,
             Self::Toml => {
@@ -353,6 +365,7 @@ impl Format {
     fn render(&self, bytes: Option<&[u8]>, value: &Value, touched: &[String]) -> Result<Vec<u8>> {
         match self {
             Self::Json => Ok(serde_json::to_vec_pretty(value)?),
+            Self::Jsonc => super::jsonc::render(bytes, value),
             Self::Yaml => Ok(serde_yaml::to_string(value)?.into_bytes()),
             Self::Toml => {
                 let mut document = std::str::from_utf8(bytes.unwrap_or(b""))
@@ -477,6 +490,38 @@ fn rollback(written: &[&Change]) -> Result<()> {
     for change in written.iter().rev() {
         apply(&change.path, &change.before)
             .context("本地恢复失败且回滚失败，请保留备份并检查配置")?;
+    }
+    Ok(())
+}
+
+/// Check actual owned fields before billable traffic; diagnostics never include values.
+pub(super) fn verify_applied(record: &ConnectionRecord) -> Result<()> {
+    if record.receipts.is_empty() || record.receipts.iter().all(|r| r.fields.is_empty()) {
+        bail!("连接缺少配置证明，请重新接入")
+    }
+    if record.tool == crate::ToolId::DeepSeekHarness {
+        let profile = record
+            .receipts
+            .first()
+            .context("连接缺少配置证明，请重新接入")?;
+        super::configuration::ConfigDocument::parse(record.tool, &None, &profile.path)?;
+    }
+    for receipt in &record.receipts {
+        let bytes = read(&receipt.path)?.context("工具配置已移除，请重新接入后测试")?;
+        // Reuse adapter preflight to catch newly added competing auth mechanisms.
+        if record.tool != crate::ToolId::DeepSeekHarness {
+            super::configuration::ConfigDocument::parse(
+                record.tool,
+                &Some(bytes.clone()),
+                &receipt.path,
+            )?;
+        }
+        let value = Format::for_tool(record.tool, &receipt.path)?.parse(Some(&bytes))?;
+        for field in &receipt.fields {
+            if lookup(&value, &tokens(&field.pointer)?)? != Some(&field.applied) {
+                bail!("工具接入配置已改变，请重新接入后测试")
+            }
+        }
     }
     Ok(())
 }

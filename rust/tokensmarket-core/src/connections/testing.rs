@@ -39,7 +39,9 @@ impl ConnectionManager {
             .into_iter()
             .map(|record| {
                 let mut summary = record.summary();
-                if let Some(test) = tests
+                if super::restore::verify_applied(&record).is_err() {
+                    summary.state = "configuration_changed";
+                } else if let Some(test) = tests
                     .iter()
                     .find(|test| test.tool == record.tool && test.key_id == record.key_id)
                 {
@@ -72,6 +74,7 @@ impl ConnectionManager {
             .into_iter()
             .find(|record| record.tool == tool && record.key_id == expected_key_id)
             .context("连接已改变，请刷新后重试")?;
+        super::restore::verify_applied(&record)?;
         let single = matches!(tool, ToolId::ClaudeCode | ToolId::Codex);
         let model = if single {
             request.model.unwrap_or_else(|| "glm-5.3".into())

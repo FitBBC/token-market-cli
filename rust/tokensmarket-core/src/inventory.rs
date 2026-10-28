@@ -315,17 +315,38 @@ pub fn official_download_url(tool: ToolId) -> &'static str {
 
 impl InstallationEnvironment {
     pub(crate) fn has_command(&self, command: &str) -> bool {
-        self.command_directories.iter().any(|directory| {
+        self.command_path(command).is_some()
+    }
+    fn command_path(&self, command: &str) -> Option<PathBuf> {
+        for directory in &self.command_directories {
             if self.platform != HostPlatform::Windows {
-                return is_executable(&directory.join(command), self.platform);
+                let path = directory.join(command);
+                if is_executable(&path, self.platform) {
+                    return Some(path);
+                }
+            } else {
+                for ext in &self.executable_extensions {
+                    if ![".exe", ".com", ".bat", ".cmd"]
+                        .contains(&ext.to_ascii_lowercase().as_str())
+                    {
+                        continue;
+                    }
+                    if let Ok(entries) = fs::read_dir(directory) {
+                        for entry in entries.flatten() {
+                            if entry
+                                .file_name()
+                                .to_string_lossy()
+                                .eq_ignore_ascii_case(&format!("{command}{ext}"))
+                                && is_executable(&entry.path(), self.platform)
+                            {
+                                return Some(entry.path());
+                            }
+                        }
+                    }
+                }
             }
-            self.executable_extensions
-                .iter()
-                .filter(|ext| {
-                    [".exe", ".com", ".bat", ".cmd"].contains(&ext.to_ascii_lowercase().as_str())
-                })
-                .any(|ext| windows_file(directory, &format!("{command}{ext}")))
-        })
+        }
+        None
     }
 }
 
@@ -346,7 +367,10 @@ fn is_executable(path: &Path, platform: HostPlatform) -> bool {
     }
     #[cfg(not(unix))]
     {
-        false
+        // Non-Unix hosts have no POSIX execute bit. The current native Windows
+        // inventory already uses its Windows branch above; allow declared-platform
+        // filesystem fixtures to model macOS command presence on that host too.
+        true
     }
 }
 
@@ -369,18 +393,6 @@ fn macos_bundle_installed(path: &Path) -> bool {
         &path.join("Contents/MacOS").join(executable),
         HostPlatform::MacOs,
     )
-}
-
-fn windows_file(directory: &Path, file: &str) -> bool {
-    fs::read_dir(directory).is_ok_and(|entries| {
-        entries.flatten().any(|entry| {
-            entry
-                .file_name()
-                .to_string_lossy()
-                .eq_ignore_ascii_case(file)
-                && is_executable(&entry.path(), HostPlatform::Windows)
-        })
-    })
 }
 
 #[cfg(windows)]
@@ -467,4 +479,108 @@ fn registered_command_directories() -> Vec<PathBuf> {
         }
     }
     paths
+}
+
+/// An inspectable OS command plan. Creating it only discovers files; it never launches a process.
+#[derive(Debug)]
+pub struct ToolLaunchPlan {
+    pub program: String,
+    pub args: Vec<String>,
+    pub environment: Vec<(String, String)>,
+    pub wait_for_exit: bool,
+}
+impl ToolInventory {
+    /// Resolve against this fresh installation snapshot, including registry PATH and nvm.
+    pub fn launch_plan(&self, tool: ToolId) -> Result<ToolLaunchPlan> {
+        self.require_installed(tool)?;
+        if let Some(path) = self.application_path(tool) {
+            return match self.environment.platform {
+                HostPlatform::MacOs => Ok(ToolLaunchPlan {
+                    program: "open".into(),
+                    args: vec!["-a".into(), path.to_string_lossy().into()],
+                    environment: vec![],
+                    wait_for_exit: true,
+                }),
+                HostPlatform::Windows => Ok(ToolLaunchPlan {
+                    program: path.to_string_lossy().into(),
+                    args: vec![],
+                    environment: vec![],
+                    wait_for_exit: false,
+                }),
+                HostPlatform::Unix => bail!("请从系统应用入口打开工具"),
+            };
+        }
+        let command = match tool {
+            ToolId::ClaudeCode => "claude",
+            ToolId::Codex => "codex",
+            ToolId::DeepSeekHarness => "dsh",
+            ToolId::WorkBuddy => "workbuddy",
+            ToolId::OpenClaw => "openclaw",
+            ToolId::OpenCode => "opencode",
+        };
+        let target = self
+            .environment
+            .command_path(command)
+            .context("工具启动文件已移除，请重新检测")?;
+        let mut directories = vec![target.parent().context("工具启动目录无效")?.to_path_buf()];
+        directories.extend(
+            self.environment
+                .command_directories
+                .iter()
+                .filter(|p| !directories.contains(p))
+                .cloned()
+                .collect::<Vec<_>>(),
+        );
+        let delimiter = if self.environment.platform == HostPlatform::Windows {
+            ";"
+        } else {
+            ":"
+        };
+        let path = directories
+            .iter()
+            .map(|p| p.to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(delimiter);
+        if self.environment.platform == HostPlatform::Windows {
+            // Only fixed command names enter cmd text. Discovered paths stay in the child
+            // environment, so spaces, ampersands and .cmd launchers need no shell interpolation.
+            let fixed = if tool == ToolId::OpenClaw {
+                "openclaw tui"
+            } else {
+                command
+            };
+            return Ok(ToolLaunchPlan {
+                program: "cmd".into(),
+                args: ["/c", "start", "", "cmd", "/k", fixed]
+                    .map(str::to_owned)
+                    .to_vec(),
+                environment: vec![("PATH".into(), path)],
+                wait_for_exit: false,
+            });
+        }
+        if self.environment.platform == HostPlatform::MacOs {
+            fn shell_quote(value: &str) -> String {
+                format!("'{}'", value.replace('\'', "'\"'\"'"))
+            }
+            let terminal = format!(
+                "env PATH={} {}{}",
+                shell_quote(&path),
+                shell_quote(&target.to_string_lossy()),
+                if tool == ToolId::OpenClaw { " tui" } else { "" }
+            );
+            let script = terminal.replace('\\', "\\\\").replace('"', "\\\"");
+            return Ok(ToolLaunchPlan {
+                program: "osascript".into(),
+                args: vec![
+                    "-e".into(),
+                    "tell application \"Terminal\" to activate".into(),
+                    "-e".into(),
+                    format!("tell application \"Terminal\" to do script \"{script}\""),
+                ],
+                environment: vec![],
+                wait_for_exit: true,
+            });
+        }
+        bail!("请打开终端运行工具")
+    }
 }

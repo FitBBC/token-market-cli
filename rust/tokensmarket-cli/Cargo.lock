@@ -664,6 +664,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "jsonc-parser"
+version = "0.34.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ecded084f9b9a718d39668a42657c32253663d1f6afb3fbb9134f0305f73f48"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "keyring"
 version = "3.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1339,6 +1348,7 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "chrono",
+ "jsonc-parser",
  "keyring",
  "plist",
  "rand 0.8.8",

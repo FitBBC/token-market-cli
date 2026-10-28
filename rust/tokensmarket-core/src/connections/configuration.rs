@@ -233,6 +233,7 @@ impl ConfigDocument {
                 }
                 let mut values = vec![
                     ("/model", json!("glm-5.3")),
+                    ("/env/ANTHROPIC_MODEL", json!("glm-5.3")),
                     ("/env/ANTHROPIC_BASE_URL", json!(gateway)),
                     ("/env/ANTHROPIC_API_KEY", json!(key)),
                     ("/env/ANTHROPIC_AUTH_TOKEN", json!(key)),

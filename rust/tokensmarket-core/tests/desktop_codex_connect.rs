@@ -110,7 +110,7 @@ async fn codex_connect_configures_responses_and_records_bound_workspace_without_
     let config = root.path().join("config.toml");
     let original = "# personal settings\nmodel = \"old-model\" # chosen before Token Market\nmodel_provider = \"other\"\n\n[model_providers.other] # retain provider\nname = \"Other\"\nbase_url = \"https://other.example/v1\"\n\n[model_providers.tokensmarket]\nname = \"Previous\"\nexperimental_bearer_token = \"old-token\"\nrequest_max_retries = 8 # retain tuning\n\n[projects.\"/sample\"]\ntrust_level = \"trusted\"\n";
     std::fs::write(&config, original).unwrap();
-    let (url, server) = platform(json!({"data":[{"id":"glm-5.3"}]}), false).await;
+    let (url, server) = platform(json!({"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"]}]}), false).await;
     let manager = ConnectionManager::new(
         root.path().join(".tokensmarket/desktop-connections"),
         url.clone(),
@@ -248,7 +248,7 @@ async fn codex_new_config_tracks_created_tables_without_touching_auth_json() {
     let config = root.path().join("config.toml");
     let auth = root.path().join("auth.json");
     std::fs::write(&auth, "{\"existing\":\"private\"}").unwrap();
-    let (url, server) = platform(json!({"data":[{"id":"glm-5.3"}]}), false).await;
+    let (url, server) = platform(json!({"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"]}]}), false).await;
     let manager = ConnectionManager::new(root.path().join("records"), url.clone(), url);
     manager
         .connect(context(), ToolId::Codex, &inventory, config.clone())
@@ -288,7 +288,7 @@ async fn codex_write_failure_keeps_the_previous_config_and_cleans_the_unused_key
     std::fs::write(&config, original).unwrap();
     std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o500)).unwrap();
     let (url, server) = platform(
-        json!({"wait_for_cleanup":true,"data":[{"id":"glm-5.3"}]}),
+        json!({"wait_for_cleanup":true,"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"]}]}),
         false,
     )
     .await;

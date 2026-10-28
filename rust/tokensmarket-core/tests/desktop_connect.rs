@@ -153,7 +153,7 @@ async fn connect_uses_desktop_key_and_visible_model_without_generation_and_recor
     let original = json!({"permissions":{"allow":["Read"]},"env":{"OTHER_PROVIDER_KEY":"keep","ANTHROPIC_API_KEY":"old-provider","ANTHROPIC_AUTH_TOKEN":"old-bearer"},"model":"other-model"});
     std::fs::write(&config, original.to_string()).unwrap();
     let (url, server) = platform(
-        json!({"data":[{"id":"glm-5.3","context_window_tokens":202752}]}),
+        json!({"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"],"context_window_tokens":202752}]}),
         false,
     )
     .await;
@@ -301,7 +301,7 @@ async fn config_write_failure_keeps_prior_config_and_cleans_the_new_unused_key()
     std::fs::write(&config, "{\"model\":\"keep\"}").unwrap();
     std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o500)).unwrap();
     let (url, server) = platform(
-        json!({"wait_for_cleanup":true,"data":[{"id":"glm-5.3"}]}),
+        json!({"wait_for_cleanup":true,"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"]}]}),
         false,
     )
     .await;
@@ -324,4 +324,87 @@ async fn config_write_failure_keeps_prior_config_and_cleans_the_new_unused_key()
         server.await.unwrap().last().unwrap(),
         "POST /api/desktop/connections/keys/9001/disable HTTP/1.1"
     );
+}
+
+#[tokio::test]
+async fn fixed_models_reject_incompatible_protocol_before_config_and_cleanup_new_key() {
+    for tool in [ToolId::ClaudeCode, ToolId::Codex] {
+        for endpoints in [
+            json!(["OPENAI_CHAT_COMPLETIONS"]),
+            json!([]),
+            serde_json::Value::Null,
+            json!([if tool == ToolId::Codex {
+                "ANTHROPIC_MESSAGES"
+            } else {
+                "OPENAI_RESPONSES"
+            }]),
+        ] {
+            let root = tempdir().unwrap();
+            let inv = inventory(root.path());
+            let exe = root.path().join("bin/codex");
+            std::fs::copy(root.path().join("bin/claude"), exe).unwrap();
+            let path = root.path().join(if tool == ToolId::Codex {
+                "config.toml"
+            } else {
+                "settings.json"
+            });
+            let original = if tool == ToolId::Codex {
+                "model = \"personal\"\n"
+            } else {
+                "{\"model\":\"personal\"}"
+            };
+            std::fs::write(&path, original).unwrap();
+            let row = if endpoints.is_null() {
+                json!({"id":"glm-5.3"})
+            } else {
+                json!({"id":"glm-5.3","supported_endpoints":endpoints})
+            };
+            let (url, server) =
+                platform(json!({"wait_for_cleanup":true,"data":[row]}), false).await;
+            let manager = ConnectionManager::new(root.path().join("records"), url.clone(), url);
+            assert!(manager
+                .connect(context(), tool, &inv, path.clone())
+                .await
+                .is_err());
+            assert_eq!(std::fs::read_to_string(path).unwrap(), original);
+            assert!(manager.list().unwrap().is_empty());
+            let requests = server.await.unwrap();
+            assert_eq!(requests.len(), 3);
+            assert_eq!(
+                requests[2],
+                "POST /api/desktop/connections/keys/9001/disable HTTP/1.1"
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn fixed_tools_accept_their_required_endpoint_without_requiring_the_other_endpoint() {
+    for (tool, protocol) in [
+        (ToolId::ClaudeCode, "ANTHROPIC_MESSAGES"),
+        (ToolId::Codex, "OPENAI_RESPONSES"),
+    ] {
+        let root = tempdir().unwrap();
+        let inv = inventory(root.path());
+        std::fs::copy(
+            root.path().join("bin/claude"),
+            root.path().join("bin/codex"),
+        )
+        .unwrap();
+        let path = root.path().join(if tool == ToolId::Codex {
+            "config.toml"
+        } else {
+            "settings.json"
+        });
+        let (url, server) = platform(
+            json!({"data":[{"id":"glm-5.3","supported_endpoints":[protocol]}]}),
+            false,
+        )
+        .await;
+        let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+        let result = manager.connect(context(), tool, &inv, path).await.unwrap();
+        assert_eq!(result.protocol, protocol);
+        assert_eq!(result.models, ["glm-5.3"]);
+        assert_eq!(server.await.unwrap().len(), 2);
+    }
 }

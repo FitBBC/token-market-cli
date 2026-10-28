@@ -1,6 +1,7 @@
 //! Desktop tool connections: credentials never cross the native/public-summary boundary.
 mod configuration;
 mod harness;
+mod jsonc;
 mod model_plan;
 mod multi_model;
 mod restore;

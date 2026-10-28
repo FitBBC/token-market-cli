@@ -109,7 +109,7 @@ checks remain separate from simulated behavior and compilation:
 | Platform | Save/read/delete in OS private store | App restart | Computer restart | Locked/denied store | Offline logout and account change |
 | --- | --- | --- | --- | --- | --- |
 | macOS | Isolated fixture passed (2026-10-28) | Pending | Pending | Pending | Pending |
-| Windows | Pending | Pending | Pending | Pending | Pending |
+| Windows | See hosted native-validation opt-in smoke for the checked revision | Pending | Pending | Pending | Pending |
 
 Ordinary automated suites keep `tests/native_credentials.rs` ignored and do not
 write OS credentials. To opt in on macOS or Windows, run:

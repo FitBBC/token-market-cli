@@ -20,7 +20,7 @@
   window.addEventListener('tokenmarket-test-request', event => {
     if (busy) return;
     const entry = event.detail;
-    if (!entry?.connection?.keyId || entry.connection.state === 'legacy') return;
+    if (!entry?.connection?.keyId || ['legacy','configuration_changed'].includes(entry.connection.state)) return;
     pending = entry;
     dialog.querySelector('.test-context').textContent = `${entry.name} · 所属账号：${entry.connection.owner.name} · 计费空间：${entry.connection.boundWorkspace.name} · 协议：${entry.connection.protocol}`;
     selector.replaceChildren();
