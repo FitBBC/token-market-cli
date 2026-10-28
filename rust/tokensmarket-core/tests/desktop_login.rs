@@ -1,4 +1,6 @@
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use tempfile::tempdir;
 use tokensmarket_core::desktop::{DesktopClient, DesktopLogin};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -15,7 +17,7 @@ async fn platform_with(
     let server = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = format!("http://{}", server.local_addr().unwrap());
     let task = tokio::spawn(async move {
-        let mut requests = vec![];
+        let mut requests: Vec<Value> = vec![];
         for index in 0..2 {
             let (mut socket, _) = server.accept().await.unwrap();
             let mut data = vec![];
@@ -51,7 +53,13 @@ async fn platform_with(
             } else {
                 assert_eq!(body["session_id"], "attempt-1");
                 assert_eq!(body["code"], "one-use");
-                assert!(body["code_verifier"].as_str().unwrap().len() >= 43);
+                let verifier = body["code_verifier"].as_str().unwrap();
+                assert!(verifier.len() >= 43);
+                assert_eq!(
+                    requests[0]["code_challenge"],
+                    URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+                );
+                assert_eq!(body["state"], requests[0]["state"]);
                 json!({"session_token":"desktop-secret","expires_at":"2099-01-01T00:00:00Z","user":{"id":"u1","name":"Ada"},"default_workspace":{"id":"w2","name":"Team"}})
             };
             requests.push(body);
