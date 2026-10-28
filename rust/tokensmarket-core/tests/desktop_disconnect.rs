@@ -14,6 +14,7 @@ async fn platform(
     let address = format!("http://{}", listener.local_addr().unwrap());
     let task = tokio::spawn(async move {
         let mut requests = vec![];
+        let mut issued_scope = Value::Null;
         loop {
             let (mut socket, _) = listener.accept().await.unwrap();
             let mut data = vec![];
@@ -46,14 +47,23 @@ async fn platform(
                 assert!(request.contains("Bearer sk-fixture"));
                 models.clone()
             } else if first.contains("/disable ") {
-                {
-                    assert!(request.contains("\"workspace_id\":\"42\""));
-                    assert!(request.contains("\"tool\":\"claude-code\""));
-                    json!({"success":models["disable_success"] == true,"data":models["disable_result"] != false})
-                }
+                assert_eq!(
+                    first,
+                    "POST /api/desktop/connections/keys/9001/disable HTTP/1.1"
+                );
+                assert!(request.contains("Bearer new-account-session"));
+                let payload: Value =
+                    serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
+                assert_eq!(
+                    payload, issued_scope,
+                    "disable must retain exact old workspace/device/tool scope"
+                );
+                json!({"success":models["disable_success"] == true,"data":models["disable_result"] != false})
             } else {
                 assert!(request.contains("Bearer desktop-secret"));
                 assert!(request.contains("\"workspace_id\":\"42\""));
+                issued_scope =
+                    serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
                 json!({"success":!fail_key,"data":{"api_key":"sk-fixture","key_id":"9001","owner":{"id":"u1","name":"Ada"},"bound_workspace":{"id":"42","name":"Research"}}})
             };
             let body = response.to_string();
