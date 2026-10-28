@@ -152,7 +152,7 @@
     } catch (error) { if (authenticated && current === generation) feedback(String(error), true); }
     finally { disconnecting = false; if (authenticated && current === generation) render(); }
   }
-  const supportedConnections = {'claude-code':'Claude Code', codex:'Codex CLI', 'deepseek-harness':'DeepSeek Harness'};
+  const supportedConnections = {'claude-code':'Claude Code', codex:'Codex CLI', 'deepseek-harness':'DeepSeek Harness',workbuddy:'WorkBuddy',openclaw:'OpenClaw',opencode:'OpenCode'};
   let launchTool = 'claude-code';
   const dialog = document.createElement('dialog');
   dialog.innerHTML = '<h3></h3><p class="restart-notice"></p><p>模型测试由你另行发起，可能产生少量费用。</p><div class="tool-actions"><button class="primary launch">打开终端运行 Claude Code</button><button class="close">完成</button></div><p class="launch-error" role="status"></p>';
@@ -179,14 +179,18 @@
       if (!authenticated || actionGeneration !== generation) return;
       await refresh(true);
       if (!authenticated || actionGeneration !== generation) return;
-      const modelNotice = tool === 'deepseek-harness' ? `已导入 ${connected.models.length} 个兼容模型，尚未测试。` : '已配置 GLM-5.3，尚未测试。';
+      const modelNotice = !['claude-code','codex'].includes(tool) ? `已导入 ${connected.models.length} 个兼容模型，尚未测试。` : '已配置 GLM-5.3，尚未测试。';
       feedback(`${name} ${modelNotice}`);
       launchTool = tool;
       dialog.querySelector('h3').textContent = `${name} 已接入`;
-      dialog.querySelector('.restart-notice').textContent = tool === 'deepseek-harness'
-        ? `${modelNotice} Harness 当前版本可在后续请求重新读取配置；若现有会话仍使用旧设置，请退出后重新打开所选 profile。`
-        : `${modelNotice} 现有 ${name} 会话需要退出后重新启动，新终端将读取接入配置。`;
-      dialog.querySelector('.launch').textContent = tool === 'deepseek-harness' ? '打开 DeepSeek Harness' : `打开终端运行 ${name}`;
+      const guidance = {
+        'deepseek-harness':'Harness 当前版本可在后续请求重新读取配置；若现有会话仍使用旧设置，请退出后重新打开所选 profile。',
+        workbuddy:'请完全退出并重新打开 WorkBuddy，在模型列表中选择导入模型。',
+        openclaw:'请重启 OpenClaw Gateway 并重新打开会话。原有模型白名单或 agent 专属配置仍可能限制可选模型，请在 OpenClaw 中检查。',
+        opencode:'请退出并重新启动 OpenCode，在模型列表中选择导入模型。项目或运行时的配置覆盖仍按 OpenCode 自身规则生效。',
+      };
+      dialog.querySelector('.restart-notice').textContent = `${modelNotice} ${guidance[tool] || `现有 ${name} 会话需要退出后重新启动，新终端将读取接入配置。`}`;
+      dialog.querySelector('.launch').textContent = ['deepseek-harness','workbuddy'].includes(tool) ? `打开 ${name}` : `打开工具 / 终端运行 ${name}`;
       dialog.querySelector('.launch-error').textContent = ''; dialog.showModal();
     } catch(error) { feedback(String(error), true); }
     finally { connecting = false; render(); }

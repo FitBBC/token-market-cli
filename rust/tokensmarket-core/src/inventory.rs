@@ -156,7 +156,7 @@ impl ToolInventory {
                     installed,
                     can_connect: installed,
                     download_url: official_download_url(adapter.id),
-                    config_path: adapter.config_path().display().to_string(),
+                    config_path: self.config_path(adapter.id).display().to_string(),
                     connection: desktop
                         .iter()
                         .find(|r| r.tool == adapter.id)
@@ -180,6 +180,36 @@ impl ToolInventory {
             })
             .collect())
     }
+    /// Desktop discovery and desktop writes share this path. Terminal CLI paths are unchanged.
+    pub fn config_path(&self, tool: ToolId) -> PathBuf {
+        if tool == ToolId::WorkBuddy {
+            let override_path = |name: &str| {
+                std::env::var_os(name)
+                    .filter(|v| !v.to_string_lossy().trim().is_empty())
+                    .map(PathBuf::from)
+            };
+            return override_path("WORKBUDDY_CONFIG_PATH").unwrap_or_else(|| {
+                override_path("WORKBUDDY_CONFIG_DIR")
+                    .or_else(|| override_path("CODEBUDDY_CONFIG_DIR"))
+                    .unwrap_or_else(|| self.environment.home.join(".workbuddy"))
+                    .join("models.json")
+            });
+        }
+        if tool == ToolId::OpenCode {
+            if let Some(path) = std::env::var_os("OPENCODE_CONFIG")
+                .filter(|v| !v.to_string_lossy().trim().is_empty())
+            {
+                return path.into();
+            }
+            let base = self.environment.home.join(".config/opencode");
+            return if base.join("opencode.jsonc").exists() {
+                base.join("opencode.jsonc")
+            } else {
+                base.join("opencode.json")
+            };
+        }
+        get_adapter(tool).config_path()
+    }
     /// Rechecks the filesystem immediately before a connection operation begins.
     pub fn require_installed(&self, tool: ToolId) -> Result<()> {
         if !self.is_installed(tool) {
@@ -202,51 +232,43 @@ impl ToolInventory {
         commands
             .iter()
             .any(|command| self.environment.has_command(command))
-            || (matches!(
-                tool,
-                ToolId::WorkBuddy | ToolId::DeepSeekHarness | ToolId::OpenClaw | ToolId::OpenCode
-            ) && self.environment.platform == HostPlatform::MacOs
-                && self
-                    .environment
-                    .application_directories
-                    .iter()
-                    .any(|directory| {
-                        macos_bundle_installed(
-                            &directory.join(format!("{}.app", get_adapter(tool).name)),
-                        )
-                    }))
-            || (self.environment.platform == HostPlatform::Windows
-                && self
-                    .environment
-                    .application_directories
-                    .iter()
-                    .any(|directory| windows_desktop_installed(directory, tool)))
+            || self.application_path(tool).is_some()
     }
-    /// Verified desktop application location for the Harness launch action.
-    pub fn harness_application_path(&self) -> Option<PathBuf> {
+    /// Verified application launch target; command launchers are handled separately.
+    pub fn application_path(&self, tool: ToolId) -> Option<PathBuf> {
+        let (folders, files): (&[&str], &[&str]) = match tool {
+            ToolId::WorkBuddy => (&["WorkBuddy"], &["WorkBuddy.exe"]),
+            ToolId::DeepSeekHarness => (
+                &["DeepSeek Harness", "deepseek-harness"],
+                &["DeepSeek Harness.exe", "deepseek-harness.exe"],
+            ),
+            ToolId::OpenClaw => (
+                &["OpenClaw", "OpenClaw Companion"],
+                &["OpenClaw.exe", "OpenClawCompanion.exe"],
+            ),
+            ToolId::OpenCode => (&["OpenCode", "opencode"], &["OpenCode.exe", "opencode.exe"]),
+            _ => return None,
+        };
         for directory in &self.environment.application_directories {
             if self.environment.platform == HostPlatform::MacOs {
-                let bundle = directory.join("DeepSeek Harness.app");
-                if macos_bundle_installed(&bundle) {
-                    return Some(bundle);
+                for name in folders {
+                    let bundle = directory.join(format!("{name}.app"));
+                    if macos_bundle_installed(&bundle) {
+                        return Some(bundle);
+                    }
                 }
             } else if self.environment.platform == HostPlatform::Windows {
-                for folder in [
-                    directory.clone(),
-                    directory.join("DeepSeek Harness"),
-                    directory.join("deepseek-harness"),
-                ] {
+                for folder in std::iter::once(directory.clone())
+                    .chain(folders.iter().map(|name| directory.join(name)))
+                {
                     if let Ok(entries) = fs::read_dir(folder) {
                         for entry in entries.flatten() {
-                            if ["DeepSeek Harness.exe", "deepseek-harness.exe"]
-                                .iter()
-                                .any(|name| {
-                                    entry
-                                        .file_name()
-                                        .to_string_lossy()
-                                        .eq_ignore_ascii_case(name)
-                                })
-                                && is_executable(&entry.path(), HostPlatform::Windows)
+                            if files.iter().any(|name| {
+                                entry
+                                    .file_name()
+                                    .to_string_lossy()
+                                    .eq_ignore_ascii_case(name)
+                            }) && is_executable(&entry.path(), HostPlatform::Windows)
                             {
                                 return Some(entry.path());
                             }
@@ -256,6 +278,9 @@ impl ToolInventory {
             }
         }
         None
+    }
+    pub fn harness_application_path(&self) -> Option<PathBuf> {
+        self.application_path(ToolId::DeepSeekHarness)
     }
     fn records(&self) -> Result<Vec<ManagedKeyRecord>> {
         let path = self.environment.home.join(".tokensmarket/keys.json");
@@ -346,28 +371,6 @@ fn windows_file(directory: &Path, file: &str) -> bool {
                 .eq_ignore_ascii_case(file)
                 && is_executable(&entry.path(), HostPlatform::Windows)
         })
-    })
-}
-
-fn windows_desktop_installed(directory: &Path, tool: ToolId) -> bool {
-    let (folders, files): (&[&str], &[&str]) = match tool {
-        ToolId::WorkBuddy => (&["WorkBuddy"], &["WorkBuddy.exe"]),
-        ToolId::DeepSeekHarness => (
-            &["DeepSeek Harness", "deepseek-harness"],
-            &["DeepSeek Harness.exe", "deepseek-harness.exe"],
-        ),
-        ToolId::OpenClaw => (
-            &["OpenClaw", "OpenClaw Companion"],
-            &["OpenClaw.exe", "OpenClawCompanion.exe"],
-        ),
-        ToolId::OpenCode => (&["OpenCode", "opencode"], &["OpenCode.exe", "opencode.exe"]),
-        _ => return false,
-    };
-    files.iter().any(|file| {
-        windows_file(directory, file)
-            || folders
-                .iter()
-                .any(|folder| windows_file(&directory.join(folder), file))
     })
 }
 
