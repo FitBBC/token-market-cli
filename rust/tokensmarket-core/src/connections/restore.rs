@@ -27,6 +27,83 @@ fn read(path: &Path) -> Result<Option<Vec<u8>>> {
         Err(_) => bail!("无法读取配置，未执行恢复"),
     }
 }
+/// Upgrade ambiguous version-1 receipts using only their original owned-field baseline.
+pub(super) fn baseline_receipts(record: &ConnectionRecord) -> Result<Vec<super::FileReceipt>> {
+    if !matches!(record.version, 1 | 2) {
+        bail!("连接记录版本不支持安全恢复")
+    }
+    let mut receipts = record.receipts.clone();
+    if record.version == 1 {
+        for receipt in &mut receipts {
+            let original = if receipt.existed {
+                let backup = receipt
+                    .backup_path
+                    .as_ref()
+                    .context("旧连接缺少原始恢复基线")?;
+                Some(
+                    Format::for_path(&receipt.path)?
+                        .parse(Some(&read(backup)?.context("旧连接恢复基线不可读")?))?,
+                )
+            } else {
+                None
+            };
+            for field in &mut receipt.fields {
+                field.before = original
+                    .as_ref()
+                    .map(|v| lookup(v, &tokens(&field.pointer)?))
+                    .transpose()?
+                    .flatten()
+                    .cloned();
+            }
+        }
+    }
+    Ok(receipts)
+}
+/// Render removal of old catalogue-owned fields in memory; publish only with the new connection.
+pub(super) fn retire_removed_fields(
+    record: &ConnectionRecord,
+    files: &mut [super::configuration::PreparedFile],
+) -> Result<()> {
+    let baseline = baseline_receipts(record)?;
+    for old in &baseline {
+        let file = files
+            .iter_mut()
+            .find(|f| f.path == old.path)
+            .context("重新接入的配置文件集合已改变，请先取消原连接")?;
+        let format = Format::for_path(&file.path)?;
+        let mut value = format.parse(Some(&file.bytes))?;
+        let mut touched = vec![];
+        for field in &old.fields {
+            // Harness emits bootstrap ownership once, but its versioned credential document
+            // still needs these markers throughout subsequent replacements.
+            let bootstrap = record.tool == crate::ToolId::DeepSeekHarness
+                && old
+                    .path
+                    .file_name()
+                    .is_some_and(|name| name == ".credentials.yaml")
+                && matches!(field.pointer.as_str(), "/version" | "/records");
+            if !bootstrap && !file.fields.iter().any(|new| new.pointer == field.pointer) {
+                set(&mut value, &field.pointer, field.before.clone())?;
+                touched.push(field.pointer.clone());
+            }
+        }
+        let mut containers = old.created_containers.clone();
+        containers.sort_by_key(|pointer| std::cmp::Reverse(pointer.matches('/').count()));
+        for pointer in containers {
+            let path = tokens(&pointer)?;
+            if lookup(&value, &path)?
+                .is_some_and(|v| empty_container(v, path.last().map(String::as_str)))
+            {
+                set(&mut value, &pointer, None)?;
+                touched.push(pointer);
+            }
+        }
+        if !touched.is_empty() {
+            file.bytes = format.render(Some(&file.bytes), &value, &touched)?;
+        }
+    }
+    Ok(())
+}
 pub(super) fn prepare(
     record: &ConnectionRecord,
     request: &DisconnectRequest,
