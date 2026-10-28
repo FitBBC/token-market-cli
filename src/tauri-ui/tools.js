@@ -42,7 +42,11 @@
       content.append(title);
       if (entry.connection) {
         content.append(text('p', entry.connection.state === 'legacy' ? '检测到旧版连接记录 · 账号与计费空间未知' : `${entry.connection.owner.name} · 计费空间：${entry.connection.boundWorkspace.name} · 已配置，未测试`, 'tool-description'));
-        content.append(text('span', entry.connection.models.join(' · '), 'tool-models'));
+        const models = document.createElement('details'); models.className = 'tool-model-list';
+        models.append(text('summary', `${entry.connection.models.length} 个模型`));
+        const items = document.createElement('ul');
+        entry.connection.models.forEach(model => items.append(text('li', model)));
+        models.append(items); content.append(models);
       } else {
         content.append(text('p', entry.installed ? '尚未接入 Token Market' : '安装后，点击重新检测即可接入', 'tool-description'));
       }
@@ -148,7 +152,7 @@
     } catch (error) { if (authenticated && current === generation) feedback(String(error), true); }
     finally { disconnecting = false; if (authenticated && current === generation) render(); }
   }
-  const supportedConnections = {'claude-code':'Claude Code', codex:'Codex CLI'};
+  const supportedConnections = {'claude-code':'Claude Code', codex:'Codex CLI', 'deepseek-harness':'DeepSeek Harness'};
   let launchTool = 'claude-code';
   const dialog = document.createElement('dialog');
   dialog.innerHTML = '<h3></h3><p class="restart-notice"></p><p>模型测试由你另行发起，可能产生少量费用。</p><div class="tool-actions"><button class="primary launch">打开终端运行 Claude Code</button><button class="close">完成</button></div><p class="launch-error" role="status"></p>';
@@ -171,15 +175,18 @@
     const actionGeneration = generation;
     connecting = true; render(); feedback(`正在取得当前空间 Key、读取模型目录并保存 ${name} 配置…`);
     try {
-      await invoke('connect_tool', {tool:event.detail.tool});
+      const connected = await invoke('connect_tool', {tool:event.detail.tool});
       if (!authenticated || actionGeneration !== generation) return;
       await refresh(true);
       if (!authenticated || actionGeneration !== generation) return;
-      feedback(`${name} 已配置 GLM-5.3，尚未测试。`);
+      const modelNotice = tool === 'deepseek-harness' ? `已导入 ${connected.models.length} 个兼容模型，尚未测试。` : '已配置 GLM-5.3，尚未测试。';
+      feedback(`${name} ${modelNotice}`);
       launchTool = tool;
       dialog.querySelector('h3').textContent = `${name} 已接入`;
-      dialog.querySelector('.restart-notice').textContent = `已配置 GLM-5.3，尚未测试。现有 ${name} 会话需要退出后重新启动，新终端将读取接入配置。`;
-      dialog.querySelector('.launch').textContent = `打开终端运行 ${name}`;
+      dialog.querySelector('.restart-notice').textContent = tool === 'deepseek-harness'
+        ? `${modelNotice} Harness 当前版本可在后续请求重新读取配置；若现有会话仍使用旧设置，请退出后重新打开所选 profile。`
+        : `${modelNotice} 现有 ${name} 会话需要退出后重新启动，新终端将读取接入配置。`;
+      dialog.querySelector('.launch').textContent = tool === 'deepseek-harness' ? '打开 DeepSeek Harness' : `打开终端运行 ${name}`;
       dialog.querySelector('.launch-error').textContent = ''; dialog.showModal();
     } catch(error) { feedback(String(error), true); }
     finally { connecting = false; render(); }

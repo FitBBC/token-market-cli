@@ -35,3 +35,6 @@
 #tools-region .tool-menu-options button:hover { background:#8881; }
 .disconnect-conflicts label { display:block; margin:12px 0; font-size:13px; }
 .disconnect-conflicts select { padding:7px; border:1px solid #ccc; border-radius:7px; background:var(--surface,#fff); color:inherit; }
+.tool-model-list { margin-top:7px; font-size:12px; overflow-wrap:anywhere; }
+.tool-model-list summary { cursor:pointer; color:var(--muted,#666); }
+.tool-model-list ul { max-height:180px; overflow:auto; margin:8px 0 0; padding-left:20px; }
