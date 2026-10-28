@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Token Market</title>
+<link rel="stylesheet" href="workspace.css">
 <style>
 :root { color-scheme:light; --background:#fafafa; --surface:#fff; --ink:#171717; --muted:#666; --line:#e5e5e5; --error:#b42318; }
 * { box-sizing:border-box; }
@@ -45,15 +46,17 @@ footer { margin-top:64px; color:var(--muted); font-size:12px; }
 <div id="feedback" role="status" aria-live="polite"></div>
 </section>
 <section id="signed-in" class="panel" hidden aria-labelledby="welcome">
-<h1 id="welcome">已登录</h1>
-<p>已进入默认空间</p>
-<div class="context"><span>账号</span><strong id="account"></strong><span>当前空间</span><strong id="workspace"></strong></div>
-<button id="change-account">切换账号</button>
-<button id="logout" class="quiet">退出登录</button>
+<div id="workspace-region"></div>
+<h1 id="welcome" hidden>已登录</h1>
+<p hidden>已进入默认空间</p>
+<div class="context" hidden><span>账号</span><strong id="account"></strong><span>当前空间</span><strong id="workspace"></strong></div>
+<button id="change-account" hidden>切换账号</button>
+<button id="logout" class="quiet" hidden>退出登录</button>
 </section>
 <section id="tools-region" hidden aria-label="本机 Agent 工具"></section>
 <footer>Token Market · 连接你的 Agent</footer>
 </main>
+<script src="workspace.js"></script>
 <script src="tools.js"></script>
 <script>
 const invoke = window.__TAURI__.core.invoke;
@@ -67,6 +70,7 @@ function feedback(message, isError = false) {
 function render(status) {
   pending = status.pending;
   const signedIn = Boolean(status.context);
+  window.TokenMarketWorkspace?.setAuthenticated(status.context);
   el('login').hidden = signedIn;
   el('signed-in').hidden = !signedIn;
   window.TokenMarketTools?.setAuthenticated(signedIn);

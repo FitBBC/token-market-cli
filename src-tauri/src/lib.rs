@@ -1,4 +1,5 @@
 mod connections;
+mod workspace;
 use serde::Serialize;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -28,20 +29,29 @@ struct SetupState {
 
 // Read-only catalogue and installation gate shared with subsequent connection commands.
 #[tauri::command]
-fn desktop_tool_inventory() -> Result<Vec<tokensmarket_core::inventory::ToolInventoryEntry>, String> {
-    tokensmarket_core::inventory::ToolInventory::current().list().map_err(|error| error.to_string())
+fn desktop_tool_inventory() -> Result<Vec<tokensmarket_core::inventory::ToolInventoryEntry>, String>
+{
+    tokensmarket_core::inventory::ToolInventory::current()
+        .list()
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn prepare_tool_connect(tool: String) -> Result<(), String> {
     let tool = tokensmarket_core::tool_id(&tool).map_err(|error| error.to_string())?;
-    tokensmarket_core::inventory::ToolInventory::current().require_installed(tool).map_err(|error| error.to_string())
+    tokensmarket_core::inventory::ToolInventory::current()
+        .require_installed(tool)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn download_tool(app: AppHandle, tool: String) -> Result<(), String> {
     let tool = tokensmarket_core::tool_id(&tool).map_err(|error| error.to_string())?;
-    app.opener().open_url(tokensmarket_core::inventory::official_download_url(tool), None::<&str>)
+    app.opener()
+        .open_url(
+            tokensmarket_core::inventory::official_download_url(tool),
+            None::<&str>,
+        )
         .map_err(|_| "无法打开官网下载页面，请稍后重试".into())
 }
 
@@ -186,11 +196,15 @@ async fn refresh_desktop_session(app: AppHandle) -> serde_json::Value {
         if *current == generation {
             match result {
                 Ok(session) => {
+                    if session.is_none() {
+                        app.state::<workspace::WorkspaceState>().clear();
+                    }
                     *state.session.lock().expect("desktop session lock") = session;
                     *state.error.lock().expect("desktop error lock") = None;
                 }
                 Err(error) => {
                     *state.session.lock().expect("desktop session lock") = None;
+                    app.state::<workspace::WorkspaceState>().clear();
                     *state.error.lock().expect("desktop error lock") = Some(error.to_string());
                 }
             }
@@ -207,6 +221,7 @@ async fn logout_desktop_session(app: AppHandle) -> Result<serde_json::Value, Str
     let state = app.state::<DesktopState>();
     *state.generation.lock().expect("desktop generation lock") += 1;
     *state.session.lock().expect("desktop session lock") = None;
+    app.state::<workspace::WorkspaceState>().clear();
     state.exchanging.store(false, Ordering::SeqCst);
     let result = state.login.logout().await;
     let (remote_revoked, warning) = match result {
@@ -325,6 +340,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(SetupState::default())
         .manage(tokensmarket_core::connections::ConnectionManager::current())
+        .manage(workspace::WorkspaceState::new())
         .setup(|app| {
             let api_base = tokensmarket_core::config::console_api_base_url();
             app.manage(DesktopState {
@@ -357,6 +373,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            workspace::desktop_workspace_context,
+            workspace::switch_desktop_workspace,
+            workspace::open_desktop_account_page,
             tool_status,
             connections::connect_tool,
             connections::launch_connected_tool,

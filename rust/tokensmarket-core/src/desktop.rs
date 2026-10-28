@@ -23,12 +23,12 @@ pub struct DesktopIdentity {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DesktopSession {
+    #[serde(default)]
+    pub web_origin: Option<String>,
     pub session_token: String,
     pub expires_at: String,
     pub user: DesktopIdentity,
     pub default_workspace: DesktopIdentity,
-    #[serde(default)]
-    pub web_origin: Option<String>,
 }
 
 impl DesktopSession {
