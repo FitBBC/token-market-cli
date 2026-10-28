@@ -209,6 +209,7 @@ impl ConfigDocument {
                     }
                     *item = replacement;
                     fields.push(FieldReceipt {
+                        retired: false,
                         pointer: format!("/{}", path.join("/")),
                         before,
                         applied,
@@ -256,6 +257,7 @@ impl ConfigDocument {
                         config["env"][pointer.trim_start_matches("/env/")] = applied.clone();
                     }
                     fields.push(FieldReceipt {
+                        retired: false,
                         pointer: pointer.into(),
                         before,
                         applied,

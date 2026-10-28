@@ -26,7 +26,7 @@ fn workbuddy_inventory_uses_the_installed_product_config_directory_and_explicit_
             application_directories: vec![],
             executable_extensions: vec![".EXE".into()],
         });
-        let path = || {
+        let path = || -> std::path::PathBuf {
             inventory
                 .list()
                 .unwrap()
@@ -34,21 +34,13 @@ fn workbuddy_inventory_uses_the_installed_product_config_directory_and_explicit_
                 .find(|e| e.id == ToolId::WorkBuddy)
                 .unwrap()
                 .config_path
+                .into()
         };
-        assert_eq!(
-            path(),
-            root.path()
-                .join(".workbuddy/models.json")
-                .display()
-                .to_string()
-        );
+        assert_eq!(path(), root.path().join(".workbuddy").join("models.json"));
         std::env::set_var("CODEBUDDY_CONFIG_DIR", root.path().join("legacy-override"));
         assert_eq!(
             path(),
-            root.path()
-                .join("legacy-override/models.json")
-                .display()
-                .to_string()
+            root.path().join("legacy-override").join("models.json")
         );
         std::env::set_var(
             "WORKBUDDY_CONFIG_DIR",
@@ -56,16 +48,10 @@ fn workbuddy_inventory_uses_the_installed_product_config_directory_and_explicit_
         );
         assert_eq!(
             path(),
-            root.path()
-                .join("workbuddy-override/models.json")
-                .display()
-                .to_string()
+            root.path().join("workbuddy-override").join("models.json")
         );
         std::env::set_var("WORKBUDDY_CONFIG_PATH", root.path().join("explicit.json"));
-        assert_eq!(
-            path(),
-            root.path().join("explicit.json").display().to_string()
-        );
+        assert_eq!(path(), root.path().join("explicit.json"));
         for name in names {
             std::env::remove_var(name);
         }
@@ -108,7 +94,7 @@ async fn opencode_uses_existing_jsonc_and_preserves_it_when_platform_is_unavaila
         .into_iter()
         .find(|e| e.id == ToolId::OpenCode)
         .unwrap();
-    assert_eq!(entry.config_path, jsonc.display().to_string());
+    assert_eq!(std::path::PathBuf::from(&entry.config_path), jsonc);
     let manager = ConnectionManager::new(
         root.path().join("state"),
         "http://127.0.0.1:1".into(),

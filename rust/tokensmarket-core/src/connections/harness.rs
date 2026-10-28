@@ -178,6 +178,7 @@ impl HarnessConfig {
             ("models", json!(model_rows)),
         ] {
             self.profile.fields.push(FieldReceipt {
+                retired: false,
                 pointer: format!("{prefix}/config/providers/tokensmarket/{name}"),
                 before: route.insert(name.into(), applied.clone()),
                 applied,
@@ -187,6 +188,7 @@ impl HarnessConfig {
             for (name, applied) in [("version", json!(1)), ("records", json!({}))] {
                 self.credentials.value[name] = applied.clone();
                 self.credentials.fields.push(FieldReceipt {
+                    retired: false,
                     pointer: format!("/{name}"),
                     before: None,
                     applied,
@@ -207,6 +209,7 @@ impl HarnessConfig {
             self.credentials.value["TOKEN_MARKET_API_KEY"] = json!(key)
         }
         self.credentials.fields.push(FieldReceipt {
+            retired: false,
             pointer: pointer.into(),
             before,
             applied: json!(key),

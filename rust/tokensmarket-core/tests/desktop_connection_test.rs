@@ -716,3 +716,60 @@ async fn all_tools_reject_removed_owned_auth_configuration_before_generation() {
         task.abort();
     }
 }
+
+#[tokio::test]
+async fn harness_unrelated_credential_records_remain_testable_and_survive_disconnect() {
+    use tokensmarket_core::connections::DisconnectRequest;
+    let root = tempdir().unwrap();
+    let (url, task) = gateway(
+        200,
+        json!({"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"OK"}}]}),
+    )
+    .await;
+    let manager = saved(
+        root.path(),
+        &url,
+        ToolId::DeepSeekHarness,
+        "OPENAI_CHAT_COMPLETIONS",
+        json!(["alpha", "beta"]),
+    )
+    .await;
+    let path = root.path().join(".credentials.yaml");
+    let mut credentials: Value = serde_yaml::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    credentials["records"]["other-provider"] = json!({"secret":"other-secret"});
+    credentials["refs"]["OTHER_KEY"] = json!("other-secret");
+    std::fs::write(&path, serde_yaml::to_string(&credentials).unwrap()).unwrap();
+    assert_eq!(
+        manager.summaries().unwrap()[0].1.state,
+        "configured_untested"
+    );
+    assert!(
+        manager
+            .test_connection(
+                ToolId::DeepSeekHarness,
+                "9001",
+                ConnectionTestRequest {
+                    confirmed: true,
+                    model: Some("beta".into())
+                }
+            )
+            .await
+            .unwrap()
+            .passed
+    );
+    task.await.unwrap();
+    manager
+        .disconnect(
+            ToolId::DeepSeekHarness,
+            "9001",
+            None,
+            DisconnectRequest::default(),
+        )
+        .await
+        .unwrap();
+    let restored: Value = serde_yaml::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    assert_eq!(
+        restored,
+        json!({"version":1,"refs":{"OTHER_KEY":"other-secret"},"records":{"other-provider":{"secret":"other-secret"}}})
+    );
+}

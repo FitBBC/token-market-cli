@@ -24,6 +24,12 @@ configuration and private ownership receipts. It stops if required models or
 protocols are unavailable. It performs no generation request. Multi-model import
 adds choices without ranking them or selecting a preferred model.
 
+Retired model fields retain their original restoration baseline as history, while
+current configuration checks use only fields still actively managed. Removed
+fields are restored once, so subsequent unrelated edits remain user-owned. A model
+that reappears can reuse its first baseline; if a released field was edited in the
+meantime, replacement stops safely for explicit repair rather than overwriting it.
+
 Reconnect captures the current account and workspace, obtains a new key/catalogue,
 then replaces the configuration before disabling only the old connection's exact
 key. Failure preserves the previous configuration/key and makes one cleanup
