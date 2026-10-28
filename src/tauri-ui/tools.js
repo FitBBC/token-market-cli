@@ -110,7 +110,6 @@
   }
   const disconnectDialog = document.createElement('dialog'); disconnectDialog.className = 'disconnect-dialog';
   disconnectDialog.innerHTML = '<h3>配置与恢复内容发生冲突</h3><p>检测到接入后的修改。请选择保留当前内容，或恢复接入前的原值。为保护凭据，此处只显示文件与配置项编号；取消将保留连接和所有文件。</p><div class="disconnect-conflicts"></div><div class="tool-actions"><button class="disconnect-cancel">暂不取消接入</button><button class="primary disconnect-confirm" disabled>确认恢复并取消接入</button></div>';
-  root.append(disconnectDialog);
   const confirmDisconnect = disconnectDialog.querySelector('.disconnect-confirm');
   disconnectDialog.querySelector('.disconnect-cancel').onclick = () => { pendingDisconnect = null; disconnectDialog.close(); };
   disconnectDialog.addEventListener('cancel', () => { pendingDisconnect = null; });
@@ -154,6 +153,7 @@
   const dialog = document.createElement('dialog');
   dialog.innerHTML = '<h3></h3><p class="restart-notice"></p><p>模型测试由你另行发起，可能产生少量费用。</p><div class="tool-actions"><button class="primary launch">打开终端运行 Claude Code</button><button class="close">完成</button></div><p class="launch-error" role="status"></p>';
   root.append(dialog);
+  root.append(disconnectDialog);
   dialog.querySelector('.close').onclick = () => dialog.close();
   dialog.querySelector('.launch').onclick = async () => {
     try { await invoke('launch_connected_tool', {tool:launchTool}); dialog.close(); }
