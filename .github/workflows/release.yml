@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: --target aarch64-apple-darwin
+          - platform: windows-latest
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            rust/tokensmarket-core
+            rust/tokensmarket-cli
+            src-tauri
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run Rust tests
+        run: |
+          cargo fmt --manifest-path rust/tokensmarket-core/Cargo.toml --all --check
+          cargo test --manifest-path rust/tokensmarket-core/Cargo.toml --all-targets
+          cargo test --manifest-path rust/tokensmarket-cli/Cargo.toml --all-targets
+          cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Build and release with Tauri
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: src-tauri
+          tagName: ${{ github.ref_name }}
+          releaseName: "Token Market Setup ${{ github.ref_name }}"
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
