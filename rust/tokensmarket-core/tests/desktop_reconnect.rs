@@ -72,6 +72,8 @@ async fn platform_with_failure(
                 }
                 if failure == Some("catalogue") && request.contains("Bearer sk-key-2") {
                     json!({"data":[]})
+                } else if failure == Some("protocol") && request.contains("Bearer sk-key-2") {
+                    json!({"data":[{"id":"glm-5.3","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]})
                 } else if harness {
                     if request.contains("Bearer sk-key-1") {
                         json!({"data":[{"id":"zeta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"excluded","supported_endpoints":["OPENAI_RESPONSES"]},{"id":"alpha","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]})
@@ -79,9 +81,9 @@ async fn platform_with_failure(
                         json!({"data":[{"id":"beta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"gamma","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]})
                     }
                 } else if request.contains("Bearer sk-key-1") {
-                    json!({"data":[{"id":"glm-5.3","context_window_tokens":202752}]})
+                    json!({"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"],"context_window_tokens":202752}]})
                 } else {
-                    json!({"data":[{"id":"glm-5.3"}]})
+                    json!({"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"]}]})
                 }
             } else if first.contains("/disable ") {
                 // Retiring old credentials is legal only after replacement files are visible.
@@ -159,7 +161,7 @@ async fn reconnect_uses_current_account_then_retires_exact_old_key_and_disconnec
     let root = tempdir().unwrap();
     let inv = inventory(root.path());
     let path = root.path().join("settings.json");
-    let original = json!({"model":"personal","env":{"ANTHROPIC_API_KEY":null},"permissions":{"allow":["Read"]}});
+    let original = json!({"model":"personal","env":{"ANTHROPIC_API_KEY":null,"ANTHROPIC_MODEL":"personal-override"},"permissions":{"allow":["Read"]}});
     std::fs::write(&path, original.to_string()).unwrap();
     let server = platform(path.clone(), false).await;
     let manager = ConnectionManager::new(
@@ -171,6 +173,11 @@ async fn reconnect_uses_current_account_then_retires_exact_old_key_and_disconnec
         .connect(context("a"), ToolId::ClaudeCode, &inv, path.clone())
         .await
         .unwrap();
+    assert_eq!(
+        serde_json::from_slice::<Value>(&std::fs::read(&path).unwrap()).unwrap()["env"]
+            ["ANTHROPIC_MODEL"],
+        "glm-5.3"
+    );
     let replaced = manager
         .reconnect(context("b"), ToolId::ClaudeCode, "1001", &inv, path.clone())
         .await
@@ -375,7 +382,7 @@ async fn repeated_reconnect_preserves_unrelated_edits_and_refuses_owned_conflict
     let root = tempdir().unwrap();
     let inv = inventory(root.path());
     let path = root.path().join("settings.json");
-    let original = json!({"model":"before-first","env":{"ANTHROPIC_API_KEY":null}});
+    let original = json!({"model":"before-first","env":{"ANTHROPIC_API_KEY":null,"ANTHROPIC_MODEL":"personal-override"}});
     std::fs::write(&path, original.to_string()).unwrap();
     let server = platform(path.clone(), false).await;
     let manager = ConnectionManager::new(
@@ -448,7 +455,7 @@ async fn repeated_reconnect_preserves_unrelated_edits_and_refuses_owned_conflict
     let restored: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
     assert_eq!(
         restored,
-        json!({"model":"manual-model","env":{"ANTHROPIC_API_KEY":null},"personal":"later edit"})
+        json!({"model":"manual-model","env":{"ANTHROPIC_API_KEY":null,"ANTHROPIC_MODEL":"personal-override"},"personal":"later edit"})
     );
 }
 
@@ -506,7 +513,7 @@ async fn reconnect_upgrades_legacy_v1_null_ambiguity_using_original_private_base
     let root = tempdir().unwrap();
     let inv = inventory(root.path());
     let path = root.path().join("settings.json");
-    let original = json!({"env":{"ANTHROPIC_API_KEY":null},"model":"personal"});
+    let original = json!({"env":{"ANTHROPIC_API_KEY":null,"ANTHROPIC_MODEL":"personal-override"},"model":"personal"});
     std::fs::write(&path, original.to_string()).unwrap();
     let server = platform(path.clone(), false).await;
     let directory = root.path().join("records");
@@ -726,4 +733,40 @@ async fn codex_reconnect_preserves_first_provider_and_later_toml_comments_and_un
     assert!(doc["model_providers"]["tokensmarket"]
         .get("wire_api")
         .is_none());
+}
+
+#[tokio::test]
+async fn reconnect_rejects_fixed_model_protocol_loss_and_keeps_old_key_and_exact_config() {
+    for tool in [ToolId::ClaudeCode, ToolId::Codex] {
+        let root = tempdir().unwrap();
+        let inv = inventory(root.path());
+        let path = root.path().join(if tool == ToolId::Codex {
+            "config.toml"
+        } else {
+            "settings.json"
+        });
+        let server = platform_with_failure(path.clone(), false, Some("protocol"), None).await;
+        let manager = ConnectionManager::new(
+            root.path().join("state"),
+            server.url.clone(),
+            server.url.clone(),
+        );
+        manager
+            .connect(context("a"), tool, &inv, path.clone())
+            .await
+            .unwrap();
+        let before = std::fs::read(&path).unwrap();
+        assert!(manager
+            .reconnect(context("a"), tool, "1001", &inv, path.clone())
+            .await
+            .is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert_eq!(manager.list().unwrap()[0].key_id, "1001");
+        let requests = server.requests.lock().unwrap();
+        assert_eq!(requests.len(), 5);
+        assert!(requests[4].starts_with("POST /api/desktop/connections/keys/1002/disable "));
+        assert!(!requests
+            .iter()
+            .any(|r| r.starts_with("POST /api/desktop/connections/keys/1001/disable ")));
+    }
 }

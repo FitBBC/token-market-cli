@@ -7,16 +7,19 @@ use serde_json::{json, Value};
 pub(super) struct MultiModelConfig {
     tool: ToolId,
     value: Value,
+    original: Option<Vec<u8>>,
 }
 fn escaped(value: &str) -> String {
     value.replace('~', "~0").replace('/', "~1")
 }
 impl MultiModelConfig {
     pub fn parse(tool: ToolId, before: &Option<Vec<u8>>) -> Result<Self> {
-        // JSON5/JSONC documents fail closed; no parser silently discards comments or syntax.
+        // OpenCode supports lossless JSONC; the other adapters retain strict JSON validation.
         let value: Value = match before {
-            Some(bytes) => serde_json::from_slice(bytes)
-                .context("工具配置不是有效 JSON；JSON5/JSONC 请先保留原文件并转换为 JSON 后重试")?,
+            Some(bytes) if tool == ToolId::OpenCode => super::jsonc::parse(bytes)?,
+            Some(bytes) => {
+                serde_json::from_slice(bytes).context("工具配置不是有效 JSON，请先修复")?
+            }
             None if tool == ToolId::WorkBuddy => json!([]),
             None => json!({}),
         };
@@ -41,7 +44,11 @@ impl MultiModelConfig {
                     }
                 }
             }
-            return Ok(Self { tool, value });
+            return Ok(Self {
+                tool,
+                value,
+                original: before.clone(),
+            });
         }
         if tool == ToolId::OpenClaw {
             validate_objects(
@@ -56,7 +63,11 @@ impl MultiModelConfig {
             if let Some(models) = value.pointer("/models/providers/tokensmarket/models") {
                 validate_rows(models)?;
             }
-            return Ok(Self { tool, value });
+            return Ok(Self {
+                tool,
+                value,
+                original: before.clone(),
+            });
         }
         if tool != ToolId::WorkBuddy {
             bail!("此工具的多模型配置尚未开放")
@@ -126,7 +137,11 @@ impl MultiModelConfig {
                 bail!("WorkBuddy 模型结构或标识重复，请先修复")
             }
         }
-        Ok(Self { tool, value })
+        Ok(Self {
+            tool,
+            value,
+            original: before.clone(),
+        })
     }
     pub fn apply(
         &mut self,
@@ -172,7 +187,6 @@ impl MultiModelConfig {
                     ("apiKey", json!(key)),
                     ("vendor", json!("Token Market")),
                     ("useCustomProtocol", json!(true)),
-                    ("isDefault", json!(false)),
                 ];
                 if let Some(tokens) = model["max_output_tokens"].as_u64().filter(|n| *n > 0) {
                     values.push(("maxOutputTokens", json!(tokens)));
@@ -248,24 +262,7 @@ impl MultiModelConfig {
                 };
                 let row = rows[index].as_object_mut().unwrap();
                 let mut metadata = json!({"name":model["display_name"].as_str().filter(|s|!s.is_empty()).unwrap_or(id)});
-                for (source, target) in [
-                    ("context_window_tokens", "contextWindow"),
-                    ("max_output_tokens", "maxTokens"),
-                ] {
-                    if let Some(tokens) = model[source].as_u64().filter(|n| *n > 0) {
-                        metadata[target] = json!(tokens);
-                    }
-                }
-                if let Some(input) = model["input_modalities"].as_array() {
-                    let known: Vec<_> = input
-                        .iter()
-                        .filter(|v| matches!(v.as_str(), Some("text" | "image")))
-                        .cloned()
-                        .collect();
-                    if !known.is_empty() {
-                        metadata["input"] = json!(known);
-                    }
-                }
+                super::model_plan::project_metadata(model, &mut metadata);
                 for (name, applied) in metadata.as_object().unwrap() {
                     fields.push(FieldReceipt {
                         pointer: format!("{selector}/{name}"),
@@ -346,7 +343,11 @@ impl MultiModelConfig {
             }
         }
         Ok(PreparedConfiguration {
-            bytes: serde_json::to_vec_pretty(&self.value)?,
+            bytes: if self.tool == ToolId::OpenCode {
+                super::jsonc::render(self.original.as_deref(), &self.value)?
+            } else {
+                serde_json::to_vec_pretty(&self.value)?
+            },
             fields,
             created_containers,
             additional_files: vec![],

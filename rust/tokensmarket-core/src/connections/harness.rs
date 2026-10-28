@@ -164,24 +164,7 @@ impl HarnessConfig {
                 {
                     row["name"] = json!(name)
                 }
-                for (source, target) in [
-                    ("context_window_tokens", "contextWindow"),
-                    ("max_output_tokens", "maxTokens"),
-                ] {
-                    if let Some(tokens) = model[source].as_u64().filter(|n| *n > 0) {
-                        row[target] = json!(tokens)
-                    }
-                }
-                if let Some(input) = model["input_modalities"].as_array() {
-                    let known: Vec<_> = input
-                        .iter()
-                        .filter(|v| matches!(v.as_str(), Some("text" | "image")))
-                        .cloned()
-                        .collect();
-                    if !known.is_empty() {
-                        row["input"] = json!(known)
-                    }
-                }
+                super::model_plan::project_metadata(model, &mut row);
                 row
             })
             .collect();

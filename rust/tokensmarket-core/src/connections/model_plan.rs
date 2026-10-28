@@ -40,7 +40,43 @@ pub(super) fn select(tool: ToolId, catalogue: &Value) -> Result<Vec<Value>> {
     }
     Ok(vec![rows
         .iter()
-        .find(|row| row["id"] == "glm-5.3")
+        .find(|row| {
+            row["id"] == "glm-5.3"
+                && row["supported_endpoints"]
+                    .as_array()
+                    .is_some_and(|endpoints| {
+                        endpoints.iter().any(|endpoint| {
+                            endpoint
+                                == if tool == ToolId::ClaudeCode {
+                                    "ANTHROPIC_MESSAGES"
+                                } else {
+                                    "OPENAI_RESPONSES"
+                                }
+                        })
+                    })
+        })
         .context("当前 Key 无法使用 glm-5.3，原配置已保留")?
         .clone()])
+}
+
+/// Metadata shape shared by Harness and OpenClaw; adapter mutation stays local.
+pub(super) fn project_metadata(model: &Value, target: &mut Value) {
+    for (source, name) in [
+        ("context_window_tokens", "contextWindow"),
+        ("max_output_tokens", "maxTokens"),
+    ] {
+        if let Some(tokens) = model[source].as_u64().filter(|n| *n > 0) {
+            target[name] = serde_json::json!(tokens);
+        }
+    }
+    if let Some(input) = model["input_modalities"].as_array() {
+        let known: Vec<_> = input
+            .iter()
+            .filter(|v| matches!(v.as_str(), Some("text" | "image")))
+            .cloned()
+            .collect();
+        if !known.is_empty() {
+            target["input"] = serde_json::json!(known);
+        }
+    }
 }

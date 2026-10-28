@@ -43,7 +43,7 @@
       title.append(text('h3', entry.name), text('span', entry.installed ? '已安装' : '未安装', `tool-badge ${entry.installed ? 'installed' : ''}`));
       content.append(title);
       if (entry.connection) {
-        const testState = {configured_untested:'已配置，未测试',test_passed:'已配置 · 文本输出测试通过',test_failed:'已配置 · 文本输出测试失败'}[entry.connection.state] || '已配置，未测试';
+        const testState = {configuration_changed:'配置已改变或不可用 · 请检查配置后再测试',configured_untested:'已配置，未测试',test_passed:'已配置 · 文本输出测试通过',test_failed:'已配置 · 文本输出测试失败'}[entry.connection.state] || '已配置，未测试';
         content.append(text('p', entry.connection.state === 'legacy' ? '检测到旧版连接记录 · 账号与计费空间未知' : `${entry.connection.owner.name} · 计费空间：${entry.connection.boundWorkspace.name} · ${testState}`, 'tool-description'));
         if (entry.connection.testResult) content.append(text('p', `${entry.connection.testResult.model}：${entry.connection.testResult.detail}（${entry.connection.testResult.testedAt}）`, 'tool-description'));
         const models = document.createElement('details'); models.className = 'tool-model-list';
@@ -95,7 +95,8 @@
         disconnect.disabled = connecting || disconnecting || testing;
         disconnect.onclick = () => { menu.open = false; runDisconnect(entry, {revision:null,resolutions:[]}); };
         const test = text('button', 'Connection Test · 测试连接', 'tool-test'); test.type = 'button';
-        test.disabled = connecting || disconnecting || testing;
+        test.disabled = connecting || disconnecting || testing || entry.connection.state === 'configuration_changed';
+        if (entry.connection.state === 'configuration_changed') test.title = '请先修复配置或重新接入，再发起付费测试';
         test.onclick = () => { menu.open = false; window.dispatchEvent(new CustomEvent('tokenmarket-test-request', {detail:{id:entry.id,name:entry.name,connection:entry.connection}})); };
         options.append(launch, test, disconnect); menu.append(options); actions.append(menu);
       }

@@ -1,11 +1,17 @@
 # Desktop tool inventory
 
-`ToolInventory::current().list()` is a read-only, fresh filesystem read. It never
-runs a tool, obtains an Agent API Key, reads tool credentials, or writes an Agent
-configuration. `require_installed(tool)` is the connection precondition; callers
-must run it immediately before beginning their connection operation. The native
-`prepare_tool_connect` command exposes that same gate. It does not authorize the
-later connection or replace the session/workspace checks required by Connect.
+`ToolInventory::current().list()` is a read-only, fresh filesystem read. Installation
+discovery never needs tool credentials or executes a tool. Connection summaries
+also read existing receipt-owned configuration fields to check that an earlier
+Test Passed still applies; owned drift or missing files shows Configuration Changed
+/ Unavailable and clears the current pass from the summary. Credentials are never displayed. Inventory does not obtain a
+Key, write configuration or make network/model requests.
+
+`require_installed(tool)` is the connection precondition; callers run it immediately
+before beginning an operation. It does not authorize the connection or replace
+its session/workspace checks. Connect and Reconnect repeat this gate. Open Tool
+uses the same fresh installation snapshot to create its command plan, so newly
+discovered Windows PATH entries and macOS nvm paths also reach the launched tool.
 
 The public fixture boundary is `ToolInventory::new(InstallationEnvironment)`.
 Tests supply a temporary home, command directories, application directories,
@@ -65,21 +71,20 @@ landing-page entries, not a claim that downloading/installing succeeded.
 ## Integration and verification boundaries
 
 `window.TokenMarketTools.setAuthenticated(boolean)` controls `#tools-region`.
-A successful native installation gate emits a cancelable
-`tokenmarket-connect-request` event with `detail: {tool}`. The next connection
-module handles it with `preventDefault()`; until then the action shows a
-placeholder, and never invokes legacy `start_setup` or automatic model tests.
-T5 must repeat the core gate at its actual mutation entrypoint.
+Connect, Reconnect, Disconnect and charge-confirmed Test call the public core
+application manager through native commands. Account/workspace changes leave
+retained connections intact. See [desktop management](desktop-management.md) for
+model policies, exact-key cleanup, configuration recovery and test proof limits.
 
-Automated fixture checks cover missing tools, residual configuration, all six
-command names, installation/removal re-detection, macOS bundle evidence, Windows
-PATHEXT/case handling and Windows desktop binaries. They do not establish Windows
-native launch, registry, installer, or browser behavior. On this macOS machine,
-`cargo run --manifest-path rust/tokensmarket-core/Cargo.toml --example inspect_inventory`
-read actual installed files and reported Claude Code, Codex CLI, WorkBuddy and
-DeepSeek Harness installed; OpenClaw and OpenCode missing. No configuration was
-changed and no model request was sent. macOS native Tauri compilation passed.
-Windows core cross-compilation is blocked by the existing ring dependency's C
-build: Windows SDK `assert.h` is unavailable on this macOS host. The isolated
-Windows registry discovery functions type-check against winreg with the Windows
-Rust target, but that is not full Windows application compilation or acceptance.
+Automated temporary-filesystem fixtures cover missing tools, residual configuration,
+all six command names, installation/removal re-detection, macOS bundle evidence,
+Windows PATHEXT/case handling and desktop binaries. Public command-plan fixtures
+cover newly discovered `.cmd` launchers with spaces/ampersands in their directory,
+and macOS nvm commands with shell/AppleScript quoting. No native tools are executed.
+
+The macOS native target compiles locally. Full Windows compilation and the opted-in
+private-store smoke are reported by hosted native-validation CI for its checked
+revision; a successful job is CI proof for that revision. These checks do not
+establish installed-bundle protocol handoff, registry/installer integration,
+application/computer restart, actual tool launch or target deployment. Those
+remain separate [native acceptance](desktop-login.md#verification-boundaries).

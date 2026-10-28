@@ -171,17 +171,8 @@ pub async fn disconnect_tool(
 #[tauri::command]
 pub async fn launch_connected_tool(app: AppHandle, tool: String) -> Result<(), String> {
     let id = tokensmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
-    let command = match id {
-        ToolId::ClaudeCode => "claude",
-        ToolId::Codex => "codex",
-        ToolId::DeepSeekHarness => "dsh",
-        ToolId::WorkBuddy => "workbuddy",
-        ToolId::OpenClaw => "openclaw tui",
-        ToolId::OpenCode => "opencode",
-    };
-    ToolInventory::current()
-        .require_installed(id)
-        .map_err(|e| e.to_string())?;
+    let inventory = ToolInventory::current();
+    let plan = inventory.launch_plan(id).map_err(|e| e.to_string())?;
     if !app
         .state::<ConnectionManager>()
         .list()
@@ -191,42 +182,17 @@ pub async fn launch_connected_tool(app: AppHandle, tool: String) -> Result<(), S
     {
         return Err("请先完成接入".into());
     }
-    if let Some(path) = ToolInventory::current().application_path(id) {
-        #[cfg(target_os = "macos")]
-        let result = std::process::Command::new("open")
-            .arg("-a")
-            .arg(path)
-            .status();
-        #[cfg(windows)]
-        let result = std::process::Command::new(path).spawn();
-        #[cfg(target_os = "macos")]
-        return match result {
+    let mut command = std::process::Command::new(&plan.program);
+    command.args(&plan.args).envs(plan.environment);
+    if plan.wait_for_exit {
+        match command.status() {
             Ok(status) if status.success() => Ok(()),
-            _ => Err("工具启动失败，请从系统应用入口重新打开".into()),
-        };
-        #[cfg(windows)]
-        return result
+            _ => Err("工具启动失败，请从系统应用入口或新终端打开".into()),
+        }
+    } else {
+        command
+            .spawn()
             .map(|_| ())
-            .map_err(|_| "工具启动失败，请从系统应用入口重新打开".into());
-    }
-    #[cfg(target_os = "macos")]
-    let result = std::process::Command::new("osascript")
-        .args([
-            "-e",
-            "tell application \"Terminal\" to activate",
-            "-e",
-            &format!("tell application \"Terminal\" to do script \"{command}\""),
-        ])
-        .status();
-    #[cfg(windows)]
-    let result = std::process::Command::new("cmd")
-        .args(["/c", "start", "", "cmd", "/k", command])
-        .status();
-    #[cfg(not(any(target_os = "macos", windows)))]
-    return Err(format!("请打开终端并运行 {command}"));
-    #[cfg(any(target_os = "macos", windows))]
-    match result {
-        Ok(status) if status.success() => Ok(()),
-        _ => Err(format!("终端启动失败，请手动打开新终端运行 {command}")),
+            .map_err(|_| "工具启动失败，请从系统应用入口或新终端打开".into())
     }
 }

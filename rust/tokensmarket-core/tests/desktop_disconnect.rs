@@ -127,7 +127,7 @@ async fn disconnect_restores_owned_fields_preserves_later_edits_and_finishes_whe
     )
     .unwrap();
     let (url, server) = platform(
-        json!({"wait_for_cleanup":true,"data":[{"id":"glm-5.3"}]}),
+        json!({"wait_for_cleanup":true,"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"]}]}),
         false,
     )
     .await;
@@ -189,7 +189,7 @@ async fn explicit_conflict_choice_preserves_user_replaced_container_without_expo
     use tokensmarket_core::connections::{ConflictResolution, RestoreChoice};
     let root = tempdir().unwrap();
     let config = root.path().join("settings.json");
-    let (url, server) = platform(json!({"data":[{"id":"glm-5.3"}]}), false).await;
+    let (url, server) = platform(json!({"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"]}]}), false).await;
     let manager = ConnectionManager::new(
         root.path().join(".tokensmarket/desktop-connections"),
         url.clone(),
@@ -265,7 +265,7 @@ async fn stale_conflict_approval_cannot_overwrite_newer_edits_and_fresh_restore_
             .to_string(),
     )
     .unwrap();
-    let (url, server) = platform(json!({"data":[{"id":"glm-5.3"}]}), false).await;
+    let (url, server) = platform(json!({"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"]}]}), false).await;
     let manager = ConnectionManager::new(
         root.path().join(".tokensmarket/desktop-connections"),
         url.clone(),
@@ -343,7 +343,7 @@ async fn stale_conflict_approval_cannot_overwrite_newer_edits_and_fresh_restore_
 async fn malformed_later_config_and_stale_record_are_preserved_without_remote_requests() {
     let root = tempdir().unwrap();
     let config = root.path().join("settings.json");
-    let (url, server) = platform(json!({"data":[{"id":"glm-5.3"}]}), false).await;
+    let (url, server) = platform(json!({"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"]}]}), false).await;
     let manager = ConnectionManager::new(
         root.path().join(".tokensmarket/desktop-connections"),
         url.clone(),
@@ -386,7 +386,7 @@ async fn newly_created_config_is_removed_only_when_empty_after_owned_fields_are_
     for unrelated in [false, true] {
         let root = tempdir().unwrap();
         let config = root.path().join("settings.json");
-        let (url, server) = platform(json!({"data":[{"id":"glm-5.3"}]}), false).await;
+        let (url, server) = platform(json!({"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"]}]}), false).await;
         let manager = ConnectionManager::new(
             root.path().join(".tokensmarket/desktop-connections"),
             url.clone(),
@@ -436,7 +436,7 @@ async fn exact_old_key_disable_success_is_truthful_and_bound_to_saved_device_and
     let root = tempdir().unwrap();
     let config = root.path().join("settings.json");
     let (url, server) = platform(
-        json!({"disable_success":true,"wait_for_cleanup":true,"data":[{"id":"glm-5.3"}]}),
+        json!({"disable_success":true,"wait_for_cleanup":true,"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"]}]}),
         false,
     )
     .await;
@@ -470,7 +470,7 @@ async fn exact_old_key_disable_success_is_truthful_and_bound_to_saved_device_and
 async fn successful_envelope_with_false_disable_result_does_not_claim_remote_success() {
     let root = tempdir().unwrap();
     let config = root.path().join("settings.json");
-    let (url,server)=platform(json!({"disable_success":true,"disable_result":false,"wait_for_cleanup":true,"data":[{"id":"glm-5.3"}]}),false).await;
+    let (url,server)=platform(json!({"disable_success":true,"disable_result":false,"wait_for_cleanup":true,"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"]}]}),false).await;
     let manager = ConnectionManager::new(
         root.path().join(".tokensmarket/desktop-connections"),
         url.clone(),
@@ -503,7 +503,7 @@ async fn successful_envelope_with_false_disable_result_does_not_claim_remote_suc
 async fn first_baseline_distinguishes_explicit_null_from_an_absent_field_after_reopening_store() {
     let root = tempdir().unwrap();
     let config = root.path().join("settings.json");
-    let (url, server) = platform(json!({"data":[{"id":"glm-5.3"}]}), false).await;
+    let (url, server) = platform(json!({"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"]}]}), false).await;
     let directory = root.path().join(".tokensmarket/desktop-connections");
     let manager = ConnectionManager::new(directory.clone(), url.clone(), url.clone());
     let original = json!({"model":null,"env":{"ANTHROPIC_API_KEY":null}});
@@ -538,7 +538,7 @@ async fn version_one_fixture_recovers_only_owned_baseline_values_and_fails_close
     for missing_backup in [false, true] {
         let root = tempdir().unwrap();
         let config = root.path().join("settings.json");
-        let (url, server) = platform(json!({"data":[{"id":"glm-5.3"}]}), false).await;
+        let (url, server) = platform(json!({"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"]}]}), false).await;
         let directory = root.path().join(".tokensmarket/desktop-connections");
         let manager = ConnectionManager::new(directory.clone(), url.clone(), url);
         std::fs::write(
@@ -611,7 +611,7 @@ async fn codex_disconnect_preserves_toml_comments_other_providers_auth_file_and_
     std::fs::write(&config, original).unwrap();
     let auth = root.path().join("auth.json");
     std::fs::write(&auth, "auth-file-untouched").unwrap();
-    let (url, server) = platform(json!({"data":[{"id":"glm-5.3"}]}), false).await;
+    let (url, server) = platform(json!({"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"]}]}), false).await;
     let manager = ConnectionManager::new(
         root.path().join(".tokensmarket/desktop-connections"),
         url.clone(),
@@ -656,7 +656,7 @@ async fn newly_created_codex_config_keeps_later_comment_when_managed_fields_are_
         root.path().join("bin/codex"),
     )
     .unwrap();
-    let (url, server) = platform(json!({"data":[{"id":"glm-5.3"}]}), false).await;
+    let (url, server) = platform(json!({"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"]}]}), false).await;
     let manager = ConnectionManager::new(
         root.path().join(".tokensmarket/desktop-connections"),
         url.clone(),

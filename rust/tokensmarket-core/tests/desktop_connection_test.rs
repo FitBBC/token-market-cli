@@ -11,53 +11,111 @@ async fn gateway(status: u16, payload: Value) -> (String, tokio::task::JoinHandl
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}", listener.local_addr().unwrap());
     let task = tokio::spawn(async move {
-        let (mut socket, _) = listener.accept().await.unwrap();
-        let mut bytes = vec![];
         loop {
-            let mut chunk = [0; 4096];
-            let n = socket.read(&mut chunk).await.unwrap();
-            bytes.extend_from_slice(&chunk[..n]);
-            if let Some(end) = bytes.windows(4).position(|w| w == b"\r\n\r\n") {
-                let header = String::from_utf8_lossy(&bytes[..end]);
-                let len: usize = header
-                    .lines()
-                    .find_map(|line| {
-                        line.to_lowercase()
-                            .strip_prefix("content-length:")
-                            .map(|s| s.trim().parse().unwrap())
-                    })
-                    .unwrap_or(0);
-                if bytes.len() >= end + 4 + len {
-                    break;
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut bytes = vec![];
+            loop {
+                let mut chunk = [0; 4096];
+                let n = socket.read(&mut chunk).await.unwrap();
+                bytes.extend_from_slice(&chunk[..n]);
+                if let Some(end) = bytes.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let header = String::from_utf8_lossy(&bytes[..end]);
+                    let len: usize = header
+                        .lines()
+                        .find_map(|line| {
+                            line.to_lowercase()
+                                .strip_prefix("content-length:")
+                                .map(|s| s.trim().parse().unwrap())
+                        })
+                        .unwrap_or(0);
+                    if bytes.len() >= end + 4 + len {
+                        break;
+                    }
                 }
+                assert_ne!(n, 0);
             }
-            assert_ne!(n, 0);
+            let request = String::from_utf8(bytes.clone()).unwrap();
+            let setup = request.starts_with("POST /api/desktop/connections/keys ")
+                || request.starts_with("GET /v1/models ");
+            let response = if request.starts_with("GET /v1/models ") {
+                json!({"data":[{"id":"alpha","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"beta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"]}]})
+            } else if setup {
+                json!({"success":true,"data":{"api_key":"sk-original-connection","key_id":"9001","owner":{"id":"old-account","name":"Original Owner"},"bound_workspace":{"id":"42","name":"Original Billing"}}})
+            } else {
+                payload.clone()
+            };
+            let body = response.to_string();
+            let status = if setup { 200 } else { status };
+            socket.write_all(format!("HTTP/1.1 {status} Fixture\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+            // The listener is dropped: a hidden second request would fail, not silently pass.
+            if !setup {
+                return String::from_utf8(bytes).unwrap();
+            }
         }
-        let body = payload.to_string();
-        socket.write_all(format!("HTTP/1.1 {status} Fixture\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
-        // The listener is dropped: a hidden second request would fail, not silently pass.
-        String::from_utf8(bytes).unwrap()
     });
     (url, task)
 }
-fn saved(
+fn config_path(root: &std::path::Path, tool: ToolId) -> std::path::PathBuf {
+    root.join(match tool {
+        ToolId::Codex => "agent-config.toml",
+        ToolId::DeepSeekHarness => "agent-config.yaml",
+        _ => "agent-config.json",
+    })
+}
+async fn saved(
     root: &std::path::Path,
     url: &str,
     tool: ToolId,
     protocol: &str,
     models: Value,
 ) -> ConnectionManager {
+    use tokensmarket_core::connections::ConnectContext;
     let directory = root.join(".tokensmarket/desktop-connections");
-    std::fs::create_dir_all(&directory).unwrap();
-    let config = root.join("agent-config");
-    std::fs::write(&config, "user config must stay byte-for-byte unchanged").unwrap();
-    std::fs::write(directory.join("connections.json"), json!([{
-        "version":2,"tool":tool,"device_id":"saved-device","key_id":"9001",
-        "owner":{"id":"old-account","name":"Original Owner"},"bound_workspace":{"id":"42","name":"Original Billing"},
-        "protocol":protocol,"models":models,"model_snapshot":[{"id":"alpha","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"beta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"glm-5.3"}],
-        "gateway_url":url,"created_at":"2026-10-28","receipts":[{"path":config,"existed":true,"backup_path":null,"fields":[],"created_containers":[]}],"api_key":"sk-original-connection"
-    }]).to_string()).unwrap();
-    // These current platform/gateway URLs cannot serve requests. The saved connection must win.
+    let bin = root.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    for name in [
+        "claude",
+        "codex",
+        "dsh",
+        "workbuddy",
+        "openclaw",
+        "opencode",
+    ] {
+        let exe = bin.join(name);
+        std::fs::write(&exe, "fixture").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(exe, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+    }
+    let inv = ToolInventory::new(InstallationEnvironment {
+        platform: HostPlatform::MacOs,
+        home: root.into(),
+        command_directories: vec![bin],
+        application_directories: vec![],
+        executable_extensions: vec![],
+    });
+    let manager = ConnectionManager::new(directory.clone(), url.into(), url.into());
+    manager
+        .connect(
+            ConnectContext {
+                session_token: "fixture-desktop".into(),
+                workspace_id: "42".into(),
+            },
+            tool,
+            &inv,
+            config_path(root, tool),
+        )
+        .await
+        .unwrap();
+    // Negative record-contract cases deliberately corrupt a genuine connection after Connect.
+    let path = directory.join("connections.json");
+    let mut records: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    records[0]["protocol"] = json!(protocol);
+    records[0]["models"] = models;
+    std::fs::write(&path, records.to_string()).unwrap();
+    // After logout/account changes, current dashboard URLs cannot replace the saved route.
     ConnectionManager::new(
         directory,
         "http://127.0.0.1:1".into(),
@@ -84,8 +142,9 @@ async fn codex_test_uses_saved_responses_credentials_and_persists_redacted_inven
         ToolId::Codex,
         "OPENAI_RESPONSES",
         json!(["glm-5.3"]),
-    );
-    let before = std::fs::read(root.path().join("agent-config")).unwrap();
+    )
+    .await;
+    let before = std::fs::read(config_path(root.path(), ToolId::Codex)).unwrap();
     let first = inventory(root.path()).list().unwrap();
     let initial =
         serde_json::to_value(first.iter().find(|e| e.id == ToolId::Codex).unwrap()).unwrap();
@@ -118,7 +177,7 @@ async fn codex_test_uses_saved_responses_credentials_and_persists_redacted_inven
     assert_eq!(body["stream"], false);
     assert!(body.get("messages").is_none());
     assert_eq!(
-        std::fs::read(root.path().join("agent-config")).unwrap(),
+        std::fs::read(config_path(root.path(), ToolId::Codex)).unwrap(),
         before
     );
     let reopened = inventory(root.path()).list().unwrap();
@@ -145,7 +204,8 @@ async fn claude_tests_glm_via_messages_with_original_key_and_anthropic_version()
         ToolId::ClaudeCode,
         "ANTHROPIC_MESSAGES",
         json!(["glm-5.3"]),
-    );
+    )
+    .await;
     let result = manager
         .test_connection(
             ToolId::ClaudeCode,
@@ -189,7 +249,8 @@ async fn multimodel_test_requires_explicit_one_compatible_saved_model_and_never_
             tool,
             "OPENAI_CHAT_COMPLETIONS",
             json!(["alpha", "beta"]),
-        );
+        )
+        .await;
         for model in [None, Some("not-configured".into()), Some("glm-5.3".into())] {
             assert!(manager
                 .test_connection(
@@ -227,7 +288,7 @@ async fn multimodel_test_requires_explicit_one_compatible_saved_model_and_never_
             )
             .await
             .is_err());
-        let config = std::fs::read(root.path().join("agent-config")).unwrap();
+        let config = std::fs::read(config_path(root.path(), tool)).unwrap();
         let result = manager
             .test_connection(
                 tool,
@@ -248,7 +309,7 @@ async fn multimodel_test_requires_explicit_one_compatible_saved_model_and_never_
         assert!(request.contains("Bearer sk-original-connection"));
         assert!(request.to_lowercase().contains("x-workspace-id: 42"));
         assert_eq!(
-            std::fs::read(root.path().join("agent-config")).unwrap(),
+            std::fs::read(config_path(root.path(), tool)).unwrap(),
             config
         );
         assert_eq!(manager.list().unwrap()[0].models, vec!["alpha", "beta"]);
@@ -298,7 +359,7 @@ async fn http_success_without_completed_visible_output_is_failed_and_remote_secr
         } else {
             json!(["glm-5.3"])
         };
-        let manager = saved(root.path(), &url, tool, protocol, models);
+        let manager = saved(root.path(), &url, tool, protocol, models).await;
         let result = manager
             .test_connection(
                 tool,
@@ -338,7 +399,8 @@ async fn responses_accepts_official_null_error_and_new_key_does_not_inherit_prev
         ToolId::Codex,
         "OPENAI_RESPONSES",
         json!(["glm-5.3"]),
-    );
+    )
+    .await;
     assert!(
         manager
             .test_connection(
@@ -378,11 +440,16 @@ async fn rejected_key_returns_redacted_actionable_failure_and_network_failure_is
         .await;
         let manager = saved(
             root.path(),
-            if remote { &url } else { "http://127.0.0.1:1" },
+            &url,
             ToolId::Codex,
             "OPENAI_RESPONSES",
             json!(["glm-5.3"]),
-        );
+        )
+        .await;
+        if !remote {
+            request.abort();
+            tokio::task::yield_now().await;
+        }
         let result = manager
             .test_connection(
                 ToolId::Codex,
@@ -412,13 +479,15 @@ async fn rejected_key_returns_redacted_actionable_failure_and_network_failure_is
 #[tokio::test]
 async fn saved_catalogue_protocol_and_charge_confirmation_are_checked_before_any_request() {
     let root = tempdir().unwrap();
+    let (url, task) = gateway(200, json!({})).await;
     let manager = saved(
         root.path(),
-        "http://127.0.0.1:1",
+        &url,
         ToolId::DeepSeekHarness,
         "OPENAI_CHAT_COMPLETIONS",
         json!(["not-compatible"]),
-    );
+    )
+    .await;
     let result = manager
         .test_connection(
             ToolId::DeepSeekHarness,
@@ -434,13 +503,17 @@ async fn saved_catalogue_protocol_and_charge_confirmation_are_checked_before_any
         manager.summaries().unwrap()[0].1.state,
         "configured_untested"
     );
+    task.abort();
+    std::fs::remove_dir_all(root.path().join(".tokensmarket")).unwrap();
+    let (url, task) = gateway(200, json!({})).await;
     let manager = saved(
         root.path(),
-        "http://127.0.0.1:1",
+        &url,
         ToolId::Codex,
         "OPENAI_CHAT_COMPLETIONS",
         json!(["glm-5.3"]),
-    );
+    )
+    .await;
     assert!(manager
         .test_connection(
             ToolId::Codex,
@@ -456,4 +529,190 @@ async fn saved_catalogue_protocol_and_charge_confirmation_are_checked_before_any
         manager.summaries().unwrap()[0].1.state,
         "configured_untested"
     );
+    task.abort();
+}
+
+#[tokio::test]
+async fn owned_config_drift_or_deletion_refuses_paid_request_but_unrelated_edits_remain_testable() {
+    for drift in [
+        "model",
+        "wire_api",
+        "experimental_bearer_token",
+        "base_url",
+        "env_key",
+        "auth",
+        "http_headers",
+        "delete",
+    ] {
+        let root = tempdir().unwrap();
+        let (url, task) = gateway(200, json!({"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"OK"}]}]})).await;
+        let manager = saved(
+            root.path(),
+            &url,
+            ToolId::Codex,
+            "OPENAI_RESPONSES",
+            json!(["glm-5.3"]),
+        )
+        .await;
+        let path = config_path(root.path(), ToolId::Codex);
+        if drift == "delete" {
+            std::fs::remove_file(&path).unwrap();
+        } else {
+            let mut document = std::fs::read_to_string(&path)
+                .unwrap()
+                .parse::<toml_edit::DocumentMut>()
+                .unwrap();
+            if drift == "http_headers" {
+                document["model_providers"]["tokensmarket"]["http_headers"]["Authorization"] =
+                    toml_edit::value("manual");
+            } else if drift == "model" {
+                document[drift] = toml_edit::value("manual");
+            } else {
+                document["model_providers"]["tokensmarket"][drift] = toml_edit::value("manual");
+            }
+            std::fs::write(&path, document.to_string()).unwrap();
+        }
+        let result = manager
+            .test_connection(
+                ToolId::Codex,
+                "9001",
+                ConnectionTestRequest {
+                    confirmed: true,
+                    model: None,
+                },
+            )
+            .await;
+        assert!(result.is_err(), "drift={drift}");
+        assert_eq!(
+            manager.summaries().unwrap()[0].1.state,
+            "configuration_changed"
+        );
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(40), async {
+                while !task.is_finished() {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .is_err()
+        );
+        task.abort();
+    }
+    let root = tempdir().unwrap();
+    let (url, task) = gateway(200, json!({"status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"OK"}]}]})).await;
+    let manager = saved(
+        root.path(),
+        &url,
+        ToolId::Codex,
+        "OPENAI_RESPONSES",
+        json!(["glm-5.3"]),
+    )
+    .await;
+    let path = config_path(root.path(), ToolId::Codex);
+    let mut bytes = std::fs::read_to_string(&path).unwrap();
+    bytes.push_str("\n[unrelated]\nnote = 'keep'\n");
+    std::fs::write(&path, &bytes).unwrap();
+    assert!(
+        manager
+            .test_connection(
+                ToolId::Codex,
+                "9001",
+                ConnectionTestRequest {
+                    confirmed: true,
+                    model: None
+                }
+            )
+            .await
+            .unwrap()
+            .passed
+    );
+    task.await.unwrap();
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), bytes);
+    std::fs::remove_file(path).unwrap();
+    assert_eq!(
+        manager.summaries().unwrap()[0].1.state,
+        "configuration_changed"
+    );
+    assert!(manager.summaries().unwrap()[0].1.test_result.is_none());
+    println!(
+        "drift_inventory={}",
+        serde_json::to_string(&inventory(root.path()).list().unwrap()).unwrap()
+    );
+    assert!(manager
+        .test_connection(
+            ToolId::Codex,
+            "9001",
+            ConnectionTestRequest {
+                confirmed: true,
+                model: None
+            }
+        )
+        .await
+        .is_err());
+}
+
+#[tokio::test]
+async fn all_tools_reject_removed_owned_auth_configuration_before_generation() {
+    for tool in [
+        ToolId::ClaudeCode,
+        ToolId::DeepSeekHarness,
+        ToolId::WorkBuddy,
+        ToolId::OpenClaw,
+        ToolId::OpenCode,
+    ] {
+        let root = tempdir().unwrap();
+        let (url, task) = gateway(200, json!({"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"OK"}}]})).await;
+        let single = tool == ToolId::ClaudeCode;
+        let manager = saved(
+            root.path(),
+            &url,
+            tool,
+            if single {
+                "ANTHROPIC_MESSAGES"
+            } else {
+                "OPENAI_CHAT_COMPLETIONS"
+            },
+            if single {
+                json!(["glm-5.3"])
+            } else {
+                json!(["alpha", "beta"])
+            },
+        )
+        .await;
+        let path = if tool == ToolId::DeepSeekHarness {
+            root.path().join(".credentials.yaml")
+        } else {
+            config_path(root.path(), tool)
+        };
+        let original = std::fs::read_to_string(&path).unwrap();
+        let changed = original.replace("sk-original-connection", "sk-manually-replaced");
+        assert_ne!(original, changed);
+        std::fs::write(&path, &changed).unwrap();
+        assert!(manager
+            .test_connection(
+                tool,
+                "9001",
+                ConnectionTestRequest {
+                    confirmed: true,
+                    model: if single { None } else { Some("beta".into()) }
+                }
+            )
+            .await
+            .is_err());
+        assert_eq!(std::fs::read_to_string(path).unwrap(), changed);
+        assert_eq!(
+            manager.summaries().unwrap()[0].1.state,
+            "configuration_changed"
+        );
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(40), async {
+                while !task.is_finished() {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .is_err()
+        );
+        task.abort();
+    }
 }
