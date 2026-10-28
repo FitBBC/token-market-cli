@@ -5,6 +5,7 @@ edition = "2021"
 license = "UNLICENSED"
 
 [dependencies]
+plist = "1"
 anyhow = "1"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
@@ -24,3 +25,9 @@ tempfile = "3"
 [lib]
 name = "tokensmarket_core"
 path = "src/lib.rs"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+keyring = { version = "3.6.3", default-features = false, features = ["apple-native", "windows-native"] }

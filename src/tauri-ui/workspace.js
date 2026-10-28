@@ -60,7 +60,8 @@
     menu.append(button('个人设置 ↗', () => open('profile')));
     if (menuAllows(snapshot.menus, 'tokens')) menu.append(button('Token 管理 ↗', () => open('tokens')));
     if (menuAllows(snapshot.menus, 'billing')) menu.append(button('钱包管理 ↗', () => open('billing')));
-    menu.append(button('退出登录', async () => { try { await invoke('logout_desktop_session'); } catch (error) { message(String(error)); } }));
+    menu.append(button('切换账号', () => document.getElementById('change-account')?.click()));
+    menu.append(button('退出登录', () => document.getElementById('logout')?.click()));
     dropdown.append(trigger, menu); actions.append(dropdown); header.append(identityArea, actions); root.append(header);
     const status = text('p', notice || snapshot.balance_error || '', 'workspace-status'); status.dataset.feedback = ''; status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite'); root.append(status);
   }

@@ -1,0 +1,25 @@
+#tools-region { width:min(820px,100%); margin:36px auto 0; text-align:left; }
+.tools-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:10px; }
+.tools-heading h2 { margin:0; font-size:22px; letter-spacing:-.4px; font-weight:650; }
+.tools-heading p { margin:4px 0 0; font-size:13px; }
+#tools-region button { display:inline-block; width:auto; margin:0; min-height:36px; padding:7px 14px; font-size:13px; border-radius:9px; white-space:nowrap; }
+#tools-region button:disabled { cursor:not-allowed; opacity:.45; }
+.tools-feedback { min-height:30px; margin:8px 0; font-size:12px; color:var(--muted,#666); }
+.tools-feedback.error { color:var(--error,#b42318); }
+.tools-list { display:grid; gap:12px; }
+.tool-row { display:flex; align-items:center; gap:16px; padding:22px; border:1px solid var(--line,#e5e5e5); border-radius:18px; background:var(--surface,#fff); }
+.tool-icon { width:52px; height:52px; flex:none; display:grid; place-items:center; border-radius:14px; background:#f4f4f4; color:#242424; }
+.tool-icon svg { width:35px; height:35px; }
+.tool-claude-code { background:#fbede5; color:#bd7653; }
+.tool-workbuddy { background:#f0eafe; color:#7850dd; }
+.tool-deepseek-harness { background:#eaf0ff; color:#4c6cee; }
+.tool-openclaw { background:#fff0eb; color:#df644b; }
+.tool-details { min-width:0; flex:1; }
+.tool-title { display:flex; align-items:center; flex-wrap:wrap; gap:9px; }
+.tool-title h3 { margin:0; font-size:16px; font-weight:600; }
+.tool-badge { font-size:11px; padding:1px 7px; border-radius:5px; color:#777; background:#f2f2f2; }
+.tool-badge.installed { color:#30744c; background:#edf6ef; }
+.tool-description { margin:5px 0 0; font-size:12px; line-height:1.6; }
+.tool-models { display:inline-block; margin-top:7px; padding:2px 7px; border:1px solid #e9e9e9; border-radius:5px; font-size:11px; color:#555; }
+.tool-actions { display:flex; align-items:center; gap:8px; flex:none; }
+@media(max-width:620px) { .tool-row { flex-wrap:wrap; padding:17px; gap:12px; } .tool-actions { width:100%; justify-content:flex-end; } .tools-heading { align-items:flex-start; } }
