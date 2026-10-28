@@ -7,8 +7,7 @@ use std::{
 };
 
 use crate::config::{
-    create_backup, home_dir, read_json_if_exists, write_private_file,
-    write_private_json,
+    create_backup, home_dir, read_json_if_exists, write_private_file, write_private_json,
 };
 use crate::models::{resolve_model_capabilities, ToolConfig};
 
