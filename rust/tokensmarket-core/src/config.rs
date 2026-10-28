@@ -33,7 +33,7 @@ pub fn gateway_api_base_url() -> String {
 }
 
 pub fn home_dir() -> PathBuf {
-    std::env::var_os("HOME")
+    std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/"))
 }
@@ -157,53 +157,7 @@ pub fn create_backup(config_path: &Path) -> Result<Option<PathBuf>> {
 }
 
 pub fn command_exists(command: &str) -> bool {
-    let home = home_dir();
-    let mut candidates: Vec<PathBuf> = Vec::new();
-    if let Some(path_env) = std::env::var_os("PATH") {
-        candidates.extend(std::env::split_paths(&path_env));
-    }
-    candidates.extend([
-        home.join(".local/bin"),
-        home.join(".bun/bin"),
-        home.join(".npm-global/bin"),
-        home.join(".cargo/bin"),
-        home.join(".nvm/versions"),
-        PathBuf::from("/usr/local/bin"),
-        PathBuf::from("/opt/homebrew/bin"),
-        PathBuf::from("/usr/bin"),
-        PathBuf::from("/bin"),
-        PathBuf::from("/usr/sbin"),
-        PathBuf::from("/sbin"),
-    ]);
-
-    candidates.iter().any(|directory| {
-        let candidate = directory.join(command);
-        is_executable_file(&candidate)
-    })
-}
-
-#[cfg(unix)]
-fn is_executable_file(path: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-
-    fs::metadata(path)
-        .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
-}
-
-#[cfg(windows)]
-fn is_executable_file(path: &Path) -> bool {
-    let file_name = path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .map(|value| value.to_ascii_lowercase())
-        .unwrap_or_default();
-    if !file_name.ends_with(".exe") {
-        return false;
-    }
-    fs::metadata(path)
-        .map(|metadata| metadata.is_file())
-        .unwrap_or(false)
+    crate::inventory::InstallationEnvironment::current().has_command(command)
 }
 
 #[cfg(unix)]

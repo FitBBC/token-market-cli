@@ -27,6 +27,7 @@ button.quiet { border-color:transparent; background:transparent; color:var(--mut
 footer { margin-top:64px; color:var(--muted); font-size:12px; }
 [hidden] { display:none !important; }
 </style>
+<link rel="stylesheet" href="tools.css">
 </head>
 <body>
 <main>
@@ -48,8 +49,10 @@ footer { margin-top:64px; color:var(--muted); font-size:12px; }
 <p>已进入默认空间</p>
 <div class="context"><span>账号</span><strong id="account"></strong><span>当前空间</span><strong id="workspace"></strong></div>
 </section>
+<section id="tools-region" hidden aria-label="本机 Agent 工具"></section>
 <footer>Token Market · 连接你的 Agent</footer>
 </main>
+<script src="tools.js"></script>
 <script>
 const invoke = window.__TAURI__.core.invoke;
 const el = id => document.getElementById(id);
@@ -64,6 +67,7 @@ function render(status) {
   const signedIn = Boolean(status.context);
   el('login').hidden = signedIn;
   el('signed-in').hidden = !signedIn;
+  window.TokenMarketTools?.setAuthenticated(signedIn);
   el('waiting').hidden = !pending && !starting && !status.exchanging;
   el('begin').hidden = Boolean(pending) || starting || Boolean(status.exchanging);
   el('copy').disabled = !pending;

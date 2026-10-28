@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::config::{
-    command_exists, create_backup, home_dir, read_json_if_exists, write_private_file,
+    create_backup, home_dir, read_json_if_exists, write_private_file,
     write_private_json,
 };
 use crate::models::{resolve_model_capabilities, ToolConfig};
@@ -76,7 +76,6 @@ pub struct Adapter {
     pub id: ToolId,
     pub name: &'static str,
     pub protocol: Protocol,
-    executable: &'static str,
     pub requires_restart: bool,
     path_kind: PathKind,
 }
@@ -130,22 +129,7 @@ impl Adapter {
     }
 
     pub fn is_installed(&self) -> bool {
-        match self.id {
-            ToolId::WorkBuddy => [
-                PathBuf::from("/Applications/WorkBuddy.app"),
-                home_dir().join("Applications/WorkBuddy.app"),
-            ]
-            .iter()
-            .any(|path| path.exists()),
-            ToolId::DeepSeekHarness => [
-                PathBuf::from("/Applications/DeepSeek Harness.app"),
-                home_dir().join("Applications/DeepSeek Harness.app"),
-                dsh_home(),
-            ]
-            .iter()
-            .any(|path| path.exists()),
-            _ => command_exists(self.executable),
-        }
+        crate::inventory::ToolInventory::current().is_installed(self.id)
     }
 
     pub fn read_config(&self) -> Result<Option<ToolConfig>> {
@@ -521,7 +505,6 @@ pub fn adapters() -> Vec<Adapter> {
             id: ToolId::ClaudeCode,
             name: "Claude Code",
             protocol: Protocol::AnthropicCompatible,
-            executable: "claude",
             requires_restart: false,
             path_kind: PathKind::ClaudeSettings,
         },
@@ -529,7 +512,6 @@ pub fn adapters() -> Vec<Adapter> {
             id: ToolId::Codex,
             name: "Codex CLI",
             protocol: Protocol::OpenAiCompatible,
-            executable: "codex",
             requires_restart: true,
             path_kind: PathKind::CodexConfig,
         },
@@ -537,7 +519,6 @@ pub fn adapters() -> Vec<Adapter> {
             id: ToolId::WorkBuddy,
             name: "WorkBuddy",
             protocol: Protocol::OpenAiCompatible,
-            executable: "workbuddy",
             requires_restart: false,
             path_kind: PathKind::WorkBuddy,
         },
@@ -545,7 +526,6 @@ pub fn adapters() -> Vec<Adapter> {
             id: ToolId::DeepSeekHarness,
             name: "DeepSeek Harness",
             protocol: Protocol::OpenAiCompatible,
-            executable: "deepseek",
             requires_restart: true,
             path_kind: PathKind::DeepSeekHarness {
                 fallback_root: false,
@@ -555,7 +535,6 @@ pub fn adapters() -> Vec<Adapter> {
             id: ToolId::OpenClaw,
             name: "OpenClaw",
             protocol: Protocol::OpenAiCompatible,
-            executable: "openclaw",
             requires_restart: false,
             path_kind: PathKind::OpenClaw,
         },
@@ -563,7 +542,6 @@ pub fn adapters() -> Vec<Adapter> {
             id: ToolId::OpenCode,
             name: "OpenCode",
             protocol: Protocol::OpenAiCompatible,
-            executable: "opencode",
             requires_restart: false,
             path_kind: PathKind::OpenCode,
         },
