@@ -27,3 +27,11 @@
 #tools-region dialog { border:1px solid #ddd; border-radius:18px; padding:28px; max-width:500px; color:inherit; background:var(--panel, #fff); }
 #tools-region dialog::backdrop { background:#0005; }
 #tools-region dialog p { line-height:1.7; }
+
+.tool-menu { position:relative; }
+.tool-menu summary { cursor:pointer; list-style:none; padding:8px 12px; border:1px solid var(--line,#ddd); border-radius:9px; font-size:13px; }
+.tool-menu-options { position:absolute; right:0; top:calc(100% + 6px); z-index:5; padding:6px; min-width:185px; border:1px solid var(--line,#ddd); border-radius:12px; background:var(--surface,#fff); box-shadow:0 8px 24px #0002; }
+#tools-region .tool-menu-options button { display:block; width:100%; text-align:left; border:0; background:transparent; color:inherit; }
+#tools-region .tool-menu-options button:hover { background:#8881; }
+.disconnect-conflicts label { display:block; margin:12px 0; font-size:13px; }
+.disconnect-conflicts select { padding:7px; border:1px solid #ccc; border-radius:7px; background:var(--surface,#fff); color:inherit; }
