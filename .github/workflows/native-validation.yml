@@ -1,0 +1,52 @@
+name: Native validation
+
+on:
+  push:
+    branches:
+      - codex/desktop-session-integration
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Rust checks (${{ matrix.platform }})
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - macos-latest
+          - windows-latest
+    steps:
+      - name: Checkout validation revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Report checked revision
+        run: git rev-parse HEAD
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      # Keep each external command in its own step: PowerShell must not hide
+      # an earlier command failure behind the exit code of a later command.
+      # Subsequent checks still run after a check fails; the job remains failed.
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path rust/tokensmarket-core/Cargo.toml --all --check
+
+      - name: Test shared core
+        if: ${{ !cancelled() }}
+        run: cargo test --manifest-path rust/tokensmarket-core/Cargo.toml --all-targets --locked
+
+      - name: Test terminal CLI compatibility
+        if: ${{ !cancelled() }}
+        run: cargo test --manifest-path rust/tokensmarket-cli/Cargo.toml --all-targets --locked
+
+      - name: Check native desktop compilation
+        if: ${{ !cancelled() }}
+        run: cargo check --manifest-path src-tauri/Cargo.toml --locked
