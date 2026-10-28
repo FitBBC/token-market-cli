@@ -339,3 +339,119 @@ async fn second_file_write_failure_rolls_back_profile_and_retains_credentials() 
     assert!(manager.list().unwrap().is_empty());
     assert_eq!(server.await.unwrap().len(), 3);
 }
+
+#[tokio::test]
+async fn harness_disconnect_restores_both_owned_scopes_and_preserves_later_provider_plugin_and_credential_edits(
+) {
+    use tokensmarket_core::connections::DisconnectRequest;
+    let root = tempdir().unwrap();
+    let inventory = inventory(root.path());
+    let profile = root.path().join("cordis.patch.yml");
+    let credentials = root.path().join(".credentials.yaml");
+    let original = json!([{"id":"llm-pi-ai","custom":"keep","config":{"providers":{"official":{"key":"other"},"tokensmarket":{"custom":"before"}}}},{"id":"existing-plugin"}]);
+    let original_credentials = json!({"version":1,"refs":{"TOKEN_MARKET_API_KEY":null,"OTHER":"secret"},"records":{"official":{"key":"keep"}}});
+    std::fs::write(&profile, serde_yaml::to_string(&original).unwrap()).unwrap();
+    std::fs::write(
+        &credentials,
+        serde_yaml::to_string(&original_credentials).unwrap(),
+    )
+    .unwrap();
+    let (url, server) = platform(
+        json!({"data":[{"id":"available","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]}),
+        2,
+    )
+    .await;
+    let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+    manager
+        .connect(
+            context(),
+            ToolId::DeepSeekHarness,
+            &inventory,
+            profile.clone(),
+        )
+        .await
+        .unwrap();
+    server.await.unwrap();
+    let mut changed = yaml(&profile);
+    changed
+        .as_array_mut()
+        .unwrap()
+        .insert(0, json!({"id":"new-plugin","config":{"manual":true}}));
+    changed[1]["config"]["providers"]["tokensmarket"]["manual"] = json!(true);
+    changed[1]["config"]["providers"]["new-provider"] = json!({"key":"new-secret"});
+    std::fs::write(&profile, serde_yaml::to_string(&changed).unwrap()).unwrap();
+    let mut changed_credentials = yaml(&credentials);
+    changed_credentials["refs"]["NEW"] = json!("new-secret");
+    changed_credentials["records"]["new-provider"] = json!({"key":"new-secret"});
+    std::fs::write(
+        &credentials,
+        serde_yaml::to_string(&changed_credentials).unwrap(),
+    )
+    .unwrap();
+    // Reopen from disk so receipts must preserve null and selector identity through serialization.
+    let outcome = manager
+        .disconnect(
+            ToolId::DeepSeekHarness,
+            "9001",
+            None,
+            DisconnectRequest::default(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(outcome.state, "disconnected");
+    assert!(manager.list().unwrap().is_empty());
+    let mut expected = original.clone();
+    expected
+        .as_array_mut()
+        .unwrap()
+        .insert(0, json!({"id":"new-plugin","config":{"manual":true}}));
+    expected[1]["config"]["providers"]["tokensmarket"]["manual"] = json!(true);
+    expected[1]["config"]["providers"]["new-provider"] = json!({"key":"new-secret"});
+    assert_eq!(yaml(&profile), expected);
+    let mut expected_credentials = original_credentials;
+    expected_credentials["refs"]["NEW"] = json!("new-secret");
+    expected_credentials["records"]["new-provider"] = json!({"key":"new-secret"});
+    assert_eq!(yaml(&credentials), expected_credentials);
+}
+
+#[tokio::test]
+async fn harness_disconnect_removes_new_owned_profile_and_versioned_credential_bootstrap() {
+    use tokensmarket_core::connections::DisconnectRequest;
+    let root = tempdir().unwrap();
+    let inventory = inventory(root.path());
+    let profile = root.path().join("profiles/desktop/cordis.patch.yml");
+    let credentials = root.path().join(".credentials.yaml");
+    let (url, server) = platform(
+        json!({"data":[{"id":"available","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]}),
+        2,
+    )
+    .await;
+    let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+    manager
+        .connect(
+            context(),
+            ToolId::DeepSeekHarness,
+            &inventory,
+            profile.clone(),
+        )
+        .await
+        .unwrap();
+    server.await.unwrap();
+    assert_eq!(
+        yaml(&credentials),
+        json!({"version":1,"refs":{"TOKEN_MARKET_API_KEY":"sk-fixture"},"records":{}})
+    );
+    let outcome = manager
+        .disconnect(
+            ToolId::DeepSeekHarness,
+            "9001",
+            None,
+            DisconnectRequest::default(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(outcome.state, "disconnected");
+    assert!(!profile.exists());
+    assert!(!credentials.exists());
+    assert!(manager.list().unwrap().is_empty());
+}
