@@ -8,13 +8,24 @@ Configure Token Market in popular AI agent tools with one command. The same setu
 
 ### Terminal users
 
-The repository does not currently publish a standalone CLI package. Build the executable from source:
+Prerequisites:
+
+- Install a supported AI agent tool before running setup. The CLI only configures tools it can detect on your computer.
+- To build the CLI from source, install a stable Rust toolchain with Cargo.
+- The `tokensmarket` executable must be on your `PATH`.
+
+The repository does not currently publish a standalone CLI package. Install the executable from source:
+
+```bash
+cargo install --path rust/tokensmarket-cli
+```
+
+Cargo normally installs it under `~/.cargo/bin`; make sure that directory is on your `PATH`. Alternatively, build without installing and invoke the binary by path:
 
 ```bash
 cargo build --release --manifest-path rust/tokensmarket-cli/Cargo.toml
+rust/tokensmarket-cli/target/release/tokensmarket --version
 ```
-
-The resulting binary is `rust/tokensmarket-cli/target/release/tokensmarket`.
 
 ### Desktop users
 
@@ -171,9 +182,3 @@ The CLI expects these platform endpoints:
 - `POST /api/cli/sessions`
 - `POST /api/cli/exchange`
 - OpenAI-compatible model/chat endpoints under `/v1`
-
-## Limitations
-
-- The first release targets the domestic environment.
-- OpenClaw is supported.
-- qclaw is not supported and will not be detected, configured, or documented by this CLI.

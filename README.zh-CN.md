@@ -8,13 +8,24 @@
 
 ### 终端用户
 
-仓库当前没有发布独立的 CLI 安装包，请从源码构建可执行文件：
+先决条件：
+
+- 运行 setup 前，请先安装支持的 AI Agent 工具。CLI 只会配置它能检测到的工具。
+- 如果要从源码构建 CLI，请安装包含 Cargo 的稳定版 Rust 工具链。
+- `tokensmarket` 可执行文件必须在 `PATH` 中。
+
+仓库当前没有发布独立的 CLI 安装包，请从源码安装可执行文件：
+
+```bash
+cargo install --path rust/tokensmarket-cli
+```
+
+Cargo 通常会安装到 `~/.cargo/bin`；请确认该目录在 `PATH` 中。也可以只构建、不安装，然后通过完整路径调用：
 
 ```bash
 cargo build --release --manifest-path rust/tokensmarket-cli/Cargo.toml
+rust/tokensmarket-cli/target/release/tokensmarket --version
 ```
-
-构建产物位于 `rust/tokensmarket-cli/target/release/tokensmarket`。
 
 ### 桌面用户
 
@@ -171,9 +182,3 @@ CLI 依赖以下平台端点：
 - `POST /api/cli/sessions`
 - `POST /api/cli/exchange`
 - `/v1` 下的 OpenAI 兼容模型和聊天端点
-
-## 当前限制
-
-- 首个发布版本面向国内环境。
-- 支持 OpenClaw。
-- 不支持 qclaw，CLI 不会检测、配置或文档化 qclaw。
