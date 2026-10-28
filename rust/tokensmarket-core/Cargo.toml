@@ -1,0 +1,26 @@
+[package]
+name = "tokensmarket-core"
+version = "0.1.0"
+edition = "2021"
+license = "UNLICENSED"
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+sha2 = "0.10"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time"] }
+toml_edit = "0.23"
+url = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[lib]
+name = "tokensmarket_core"
+path = "src/lib.rs"

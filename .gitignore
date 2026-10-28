@@ -4,3 +4,5 @@ coverage/
 *.log
 .env
 .DS_Store
+target/
+src-tauri/gen/schemas/

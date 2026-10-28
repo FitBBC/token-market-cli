@@ -4,12 +4,20 @@ Configure Token Market in popular agent tools with one command.
 
 ## Commands
 
+For terminal users:
+
 ```bash
-npx tokensmarket setup
-npx tokensmarket setup claude-code
-npx tokensmarket doctor
-npx tokensmarket test
-npx tokensmarket keys
+tokensmarket setup
+tokensmarket setup claude-code
+tokensmarket doctor
+tokensmarket test claude-code
+tokensmarket keys
+```
+
+For non-technical users, launch the guided macOS app:
+
+```bash
+open "Token Market Setup.app"
 ```
 
 ## Supported tools
@@ -33,12 +41,19 @@ The CLI expects these platform endpoints:
 
 Authorization uses PKCE and a one-time local callback at `http://127.0.0.1`.
 
+## Rust architecture
+
+- `rust/tokensmarket-core`: shared setup domain, adapters, authorization, verification, and key registry.
+- `rust/tokensmarket-cli`: the `tokensmarket` executable.
+- `src-tauri`: the native desktop app, which calls the same Rust core directly.
+
 ## Development
 
 ```bash
-npm install
-npm run typecheck
-npm test
-npm run build
-npm run dev -- setup claude-code
+cargo fmt --all
+cargo test --manifest-path rust/tokensmarket-core/Cargo.toml
+cargo test --manifest-path rust/tokensmarket-cli/Cargo.toml
+cargo check --manifest-path src-tauri/Cargo.toml
+cargo build --release --manifest-path rust/tokensmarket-cli/Cargo.toml
+cargo tauri build
 ```
