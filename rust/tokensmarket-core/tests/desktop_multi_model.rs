@@ -9,11 +9,16 @@ async fn platform(
     models: serde_json::Value,
     expected_requests: usize,
 ) -> (String, tokio::task::JoinHandle<Vec<String>>) {
+    platform_sequence(vec![models],expected_requests).await
+}
+async fn platform_sequence(catalogues: Vec<Value>,expected_requests:usize)->(String,tokio::task::JoinHandle<Vec<String>>) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = format!("http://{}", listener.local_addr().unwrap());
     let task = tokio::spawn(async move {
         let mut requests = vec![];
+        let mut issued=0;
+        let mut queried=0;
         loop {
             let (mut socket, _) = listener.accept().await.unwrap();
             let mut data = vec![];
@@ -43,17 +48,18 @@ async fn platform(
             let first = request.lines().next().unwrap().to_string();
             requests.push(first.clone());
             let response = if first.starts_with("GET /v1/models ") {
-                assert!(request.contains("Bearer sk-fixture"));
-                models.clone()
+                assert!(request.contains(if queried==0 {"Bearer sk-fixture"}else{"Bearer sk-replacement"}));
+                let response=catalogues[queried].clone();queried+=1;response
             } else if first.contains("/disable ") {
                 json!({"success":true,"data":true})
             } else {
                 assert!(request.contains("Bearer desktop-secret"));
                 assert!(request.contains("\"workspace_id\":\"42\""));
-                json!({"success":true,"data":{"api_key":"sk-fixture","key_id":"9001","owner":{"id":"u1","name":"Ada"},"bound_workspace":{"id":"42","name":"Research"}}})
+                issued+=1;
+                json!({"success":true,"data":{"api_key":if issued==1 {"sk-fixture"}else{"sk-replacement"},"key_id":if issued==1 {"9001"}else{"9002"},"owner":{"id":"u1","name":"Ada"},"bound_workspace":{"id":"42","name":"Research"}}})
             };
             let body = response.to_string();
-            let status = if first.starts_with("GET ") && models["fail_http"] == true {
+            let status = if first.starts_with("GET ") && response["fail_http"] == true {
                 "503 Service Unavailable"
             } else {
                 "200 OK"
@@ -397,5 +403,37 @@ async fn malformed_or_ambiguous_native_shapes_fail_before_key_issuance() {
         );
         assert!(!root.path().join("state").exists());
         assert_eq!(std::fs::read_to_string(path).unwrap(), original);
+    }
+}
+
+#[tokio::test]
+async fn reconnect_all_three_retires_obsolete_models_and_preserves_the_first_baseline() {
+    use tokensmarket_core::connections::DisconnectRequest;
+    for tool in [ToolId::WorkBuddy,ToolId::OpenClaw,ToolId::OpenCode] {
+        let root=tempdir().unwrap();let inventory=inventory(root.path());let path=root.path().join("config.json");
+        let original=match tool {
+            ToolId::WorkBuddy=>json!({"models":[{"id":"retained","url":"https://manual","apiKey":"manual-secret","manual":true}],"availableModels":["manual"],"custom":true}),
+            ToolId::OpenClaw=>json!({"models":{"mode":"replace","providers":{"tokensmarket":{"apiKey":"manual-secret","custom":true}}},"agents":{"defaults":{"model":{"primary":"manual"}}}}),
+            ToolId::OpenCode=>json!({"provider":{"tokensmarket":{"options":{"apiKey":"manual-secret"},"custom":true}},"model":"manual/model","small_model":"manual/small"}),
+            _=>unreachable!(),
+        };
+        std::fs::write(&path,serde_json::to_vec(&original).unwrap()).unwrap();
+        let (url,server)=platform_sequence(vec![json!({"data":[{"id":"obsolete","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"retained","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"],"context_window_tokens":65536,"max_output_tokens":4096}]}),json!({"data":[{"id":"retained","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"new","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]})],5).await;
+        let manager=ConnectionManager::new(root.path().join("state"),url.clone(),url);
+        manager.connect(context(),tool,&inventory,path.clone()).await.unwrap();
+        let mut current=read(&path);current["later"]=json!(true);if tool==ToolId::WorkBuddy {current["availableModels"].as_array_mut().unwrap().push(json!("later"));}
+        std::fs::write(&path,serde_json::to_vec(&current).unwrap()).unwrap();
+        let outcome=manager.reconnect(context(),tool,"9001",&inventory,path.clone()).await.unwrap();
+        assert_eq!(outcome.connection.models,vec!["retained","new"]);assert!(outcome.old_key_disabled);
+        let current=read(&path);assert_eq!(current["later"],true);
+        match tool {
+            ToolId::WorkBuddy=>{let rows=current["models"].as_array().unwrap();assert!(!rows.iter().any(|r|r["id"]=="obsolete"));let row=rows.iter().find(|r|r["id"]=="retained").unwrap();assert_eq!(row["apiKey"],"sk-replacement");assert!(row.get("maxOutputTokens").is_none());assert_eq!(current["availableModels"],json!(["manual","retained","later","new"]));},
+            ToolId::OpenClaw=>{let route=&current["models"]["providers"]["tokensmarket"];assert_eq!(route["apiKey"],"sk-replacement");let rows=route["models"].as_array().unwrap();assert!(!rows.iter().any(|r|r["id"]=="obsolete"));assert!(rows.iter().find(|r|r["id"]=="retained").unwrap().get("maxTokens").is_none());},
+            ToolId::OpenCode=>{let route=&current["provider"]["tokensmarket"];assert_eq!(route["options"]["apiKey"],"sk-replacement");assert!(route["models"].get("obsolete").is_none());assert!(route["models"]["retained"].get("limit").is_none());},
+            _=>unreachable!(),
+        }
+        assert_eq!(manager.disconnect(tool,"9002",None,DisconnectRequest::default()).await.unwrap().state,"disconnected");
+        let mut expected=original;expected["later"]=json!(true);if tool==ToolId::WorkBuddy {expected["availableModels"].as_array_mut().unwrap().push(json!("later"));}
+        assert_eq!(read(&path),expected);assert_eq!(server.await.unwrap().len(),5);
     }
 }
