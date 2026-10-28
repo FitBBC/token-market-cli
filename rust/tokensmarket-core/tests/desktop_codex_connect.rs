@@ -178,3 +178,130 @@ async fn codex_connect_configures_responses_and_records_bound_workspace_without_
         ]
     );
 }
+
+#[tokio::test]
+async fn codex_invalid_toml_or_conflicting_auth_fails_before_issuance_or_local_writes() {
+    for original in [
+        "model = [broken",
+        "model_providers = false\n",
+        "[model_providers]\ntokensmarket = 7\n",
+        "[model_providers.tokensmarket]\nwire_api = 12\n",
+        "[model_providers.tokensmarket]\nrequires_openai_auth = 'yes'\n",
+        "[model_providers.tokensmarket]\nenv_key = 'OLD_KEY'\n",
+        "[model_providers.tokensmarket.auth]\ncommand = 'get-token'\n",
+        "[model_providers.tokensmarket.http_headers]\nAuthorization = 'Bearer old'\n",
+    ] {
+        let root = tempdir().unwrap();
+        let inventory = inventory(root.path());
+        let path = root.path().join("config.toml");
+        std::fs::write(&path, original).unwrap();
+        let directory = root.path().join("records");
+        let manager = ConnectionManager::new(
+            directory.clone(),
+            "http://127.0.0.1:1".into(),
+            "http://127.0.0.1:1".into(),
+        );
+        let error = manager
+            .connect(context(), ToolId::Codex, &inventory, path.clone())
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("Codex CLI"), "{error}");
+        assert_eq!(std::fs::read_to_string(path).unwrap(), original);
+        assert!(
+            !directory.exists(),
+            "preflight must precede any device/key/backup write"
+        );
+    }
+}
+
+#[tokio::test]
+async fn codex_missing_glm_preserves_the_previous_provider_and_cleans_only_the_new_key() {
+    let root = tempdir().unwrap();
+    let inventory = inventory(root.path());
+    let config = root.path().join("config.toml");
+    let original = "model = 'keep'\nmodel_provider = 'other'\n";
+    std::fs::write(&config, original).unwrap();
+    let (url, server) = platform(json!({"data":[{"id":"other-model"}]}), false).await;
+    let manager = ConnectionManager::new(root.path().join("records"), url.clone(), url);
+    let error = manager
+        .connect(context(), ToolId::Codex, &inventory, config.clone())
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("glm-5.3"));
+    assert_eq!(std::fs::read_to_string(config).unwrap(), original);
+    assert!(manager.list().unwrap().is_empty());
+    assert_eq!(
+        server.await.unwrap(),
+        vec![
+            "POST /api/desktop/connections/keys HTTP/1.1",
+            "GET /v1/models HTTP/1.1",
+            "POST /api/desktop/connections/keys/9001/disable HTTP/1.1"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn codex_new_config_tracks_created_tables_without_touching_auth_json() {
+    let root = tempdir().unwrap();
+    let inventory = inventory(root.path());
+    let config = root.path().join("config.toml");
+    let auth = root.path().join("auth.json");
+    std::fs::write(&auth, "{\"existing\":\"private\"}").unwrap();
+    let (url, server) = platform(json!({"data":[{"id":"glm-5.3"}]}), false).await;
+    let manager = ConnectionManager::new(root.path().join("records"), url.clone(), url);
+    manager
+        .connect(context(), ToolId::Codex, &inventory, config.clone())
+        .await
+        .unwrap();
+    let applied: toml_edit::DocumentMut = std::fs::read_to_string(config).unwrap().parse().unwrap();
+    assert_eq!(
+        applied["model_providers"]["tokensmarket"]["wire_api"].as_str(),
+        Some("responses")
+    );
+    assert_eq!(
+        std::fs::read_to_string(auth).unwrap(),
+        "{\"existing\":\"private\"}"
+    );
+    let records = manager.list().unwrap();
+    let receipt = &records[0].receipts[0];
+    assert!(!receipt.existed);
+    assert!(receipt.backup_path.is_none());
+    assert_eq!(
+        receipt.created_containers,
+        vec!["/model_providers", "/model_providers/tokensmarket"]
+    );
+    assert!(receipt.fields.iter().all(|f| f.before.is_none()));
+    assert_eq!(server.await.unwrap().len(), 2);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn codex_write_failure_keeps_the_previous_config_and_cleans_the_unused_key() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempdir().unwrap();
+    let inventory = inventory(root.path());
+    let directory = root.path().join("read-only");
+    std::fs::create_dir(&directory).unwrap();
+    let config = directory.join("config.toml");
+    let original = "model = 'keep'\n";
+    std::fs::write(&config, original).unwrap();
+    std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o500)).unwrap();
+    let (url, server) = platform(
+        json!({"wait_for_cleanup":true,"data":[{"id":"glm-5.3"}]}),
+        false,
+    )
+    .await;
+    let manager = ConnectionManager::new(root.path().join("records"), url.clone(), url);
+    let result = manager
+        .connect(context(), ToolId::Codex, &inventory, config.clone())
+        .await;
+    std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(result.is_err());
+    assert_eq!(std::fs::read_to_string(config).unwrap(), original);
+    assert!(manager.list().unwrap().is_empty());
+    assert_eq!(
+        server.await.unwrap().last().unwrap(),
+        "POST /api/desktop/connections/keys/9001/disable HTTP/1.1"
+    );
+}

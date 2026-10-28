@@ -51,9 +51,11 @@ pub async fn connect_tool(app: AppHandle, tool: String) -> Result<ConnectionSumm
 #[tauri::command]
 pub async fn launch_connected_tool(app: AppHandle, tool: String) -> Result<(), String> {
     let id = tokensmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
-    if id != ToolId::ClaudeCode {
-        return Err("此工具的启动入口尚未开放".into());
-    }
+    let command = match id {
+        ToolId::ClaudeCode => "claude",
+        ToolId::Codex => "codex",
+        _ => return Err("此工具的启动入口尚未开放".into()),
+    };
     ToolInventory::current()
         .require_installed(id)
         .map_err(|e| e.to_string())?;
@@ -72,18 +74,18 @@ pub async fn launch_connected_tool(app: AppHandle, tool: String) -> Result<(), S
             "-e",
             "tell application \"Terminal\" to activate",
             "-e",
-            "tell application \"Terminal\" to do script \"claude\"",
+            &format!("tell application \"Terminal\" to do script \"{command}\""),
         ])
         .status();
     #[cfg(windows)]
     let result = std::process::Command::new("cmd")
-        .args(["/c", "start", "", "cmd", "/k", "claude"])
+        .args(["/c", "start", "", "cmd", "/k", command])
         .status();
     #[cfg(not(any(target_os = "macos", windows)))]
-    return Err("请打开终端并运行 claude".into());
+    return Err(format!("请打开终端并运行 {command}"));
     #[cfg(any(target_os = "macos", windows))]
     match result {
         Ok(status) if status.success() => Ok(()),
-        _ => Err("终端启动失败，请手动打开新终端运行 claude".into()),
+        _ => Err(format!("终端启动失败，请手动打开新终端运行 {command}")),
     }
 }
