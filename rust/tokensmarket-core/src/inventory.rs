@@ -222,6 +222,41 @@ impl ToolInventory {
                     .iter()
                     .any(|directory| windows_desktop_installed(directory, tool)))
     }
+    /// Verified desktop application location for the Harness launch action.
+    pub fn harness_application_path(&self) -> Option<PathBuf> {
+        for directory in &self.environment.application_directories {
+            if self.environment.platform == HostPlatform::MacOs {
+                let bundle = directory.join("DeepSeek Harness.app");
+                if macos_bundle_installed(&bundle) {
+                    return Some(bundle);
+                }
+            } else if self.environment.platform == HostPlatform::Windows {
+                for folder in [
+                    directory.clone(),
+                    directory.join("DeepSeek Harness"),
+                    directory.join("deepseek-harness"),
+                ] {
+                    if let Ok(entries) = fs::read_dir(folder) {
+                        for entry in entries.flatten() {
+                            if ["DeepSeek Harness.exe", "deepseek-harness.exe"]
+                                .iter()
+                                .any(|name| {
+                                    entry
+                                        .file_name()
+                                        .to_string_lossy()
+                                        .eq_ignore_ascii_case(name)
+                                })
+                                && is_executable(&entry.path(), HostPlatform::Windows)
+                            {
+                                return Some(entry.path());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
     fn records(&self) -> Result<Vec<ManagedKeyRecord>> {
         let path = self.environment.home.join(".tokensmarket/keys.json");
         match fs::read_to_string(&path) {

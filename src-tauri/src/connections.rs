@@ -54,6 +54,7 @@ pub async fn launch_connected_tool(app: AppHandle, tool: String) -> Result<(), S
     let command = match id {
         ToolId::ClaudeCode => "claude",
         ToolId::Codex => "codex",
+        ToolId::DeepSeekHarness => "dsh",
         _ => return Err("此工具的启动入口尚未开放".into()),
     };
     ToolInventory::current()
@@ -67,6 +68,26 @@ pub async fn launch_connected_tool(app: AppHandle, tool: String) -> Result<(), S
         .any(|r| r.tool == id)
     {
         return Err("请先完成接入".into());
+    }
+    if id == ToolId::DeepSeekHarness {
+        if let Some(path) = ToolInventory::current().harness_application_path() {
+            #[cfg(target_os = "macos")]
+            let result = std::process::Command::new("open")
+                .arg("-a")
+                .arg(path)
+                .status();
+            #[cfg(windows)]
+            let result = std::process::Command::new(path).spawn();
+            #[cfg(target_os = "macos")]
+            return match result {
+                Ok(status) if status.success() => Ok(()),
+                _ => Err("Harness 启动失败，请从系统应用入口重新打开".into()),
+            };
+            #[cfg(windows)]
+            return result
+                .map(|_| ())
+                .map_err(|_| "Harness 启动失败，请从系统应用入口重新打开".into());
+        }
     }
     #[cfg(target_os = "macos")]
     let result = std::process::Command::new("osascript")

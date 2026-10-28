@@ -27,3 +27,7 @@
 #tools-region dialog { border:1px solid #ddd; border-radius:18px; padding:28px; max-width:500px; color:inherit; background:var(--panel, #fff); }
 #tools-region dialog::backdrop { background:#0005; }
 #tools-region dialog p { line-height:1.7; }
+
+.tool-model-list { margin-top:7px; font-size:12px; overflow-wrap:anywhere; }
+.tool-model-list summary { cursor:pointer; color:var(--muted,#666); }
+.tool-model-list ul { max-height:180px; overflow:auto; margin:8px 0 0; padding-left:20px; }

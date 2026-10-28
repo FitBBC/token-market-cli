@@ -1,6 +1,8 @@
 //! Desktop tool connections: credentials never cross the native/public-summary boundary.
 mod configuration;
-use configuration::ConfigDocument;
+mod harness;
+mod model_plan;
+use configuration::{ConfigDocument, PreparedFile};
 
 use crate::{desktop::DesktopIdentity, inventory::ToolInventory, ToolId};
 use anyhow::{bail, Context, Result};
@@ -157,7 +159,10 @@ impl ConnectionManager {
             .try_lock()
             .map_err(|_| anyhow::anyhow!("接入正在进行，请稍候"))?;
         inventory.require_installed(tool)?;
-        if !matches!(tool, ToolId::ClaudeCode | ToolId::Codex) {
+        if !matches!(
+            tool,
+            ToolId::ClaudeCode | ToolId::Codex | ToolId::DeepSeekHarness
+        ) {
             bail!("此工具的桌面接入尚未开放")
         }
         if context.session_token.is_empty() || context.workspace_id.is_empty() {
@@ -188,7 +193,7 @@ impl ConnectionManager {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
             Err(_) => bail!("无法读取工具配置"),
         };
-        let mut config = ConfigDocument::parse(tool, &before)?;
+        let mut config = ConfigDocument::parse(tool, &before, &path)?;
         let device_id = self.device_id()?;
         let response = self
             .http
@@ -276,32 +281,46 @@ impl ConnectionManager {
             .json()
             .await
             .context("模型目录无效，原配置已保留")?;
-        let model = catalogue["data"]
-            .as_array()
-            .and_then(|models| models.iter().find(|model| model["id"] == "glm-5.3"))
-            .context("当前 Key 无法使用 glm-5.3，原配置已保留")?
-            .clone();
-        let prepared = config.apply(&self.gateway_url, &key.api_key, &model)?;
+        let models = model_plan::select(tool, &catalogue)?;
+        let prepared = config.apply(&self.gateway_url, &key.api_key, &models)?;
+        let mut files = vec![PreparedFile {
+            path: path.into(),
+            before: before.clone(),
+            bytes: prepared.bytes,
+            fields: prepared.fields,
+            created_containers: prepared.created_containers,
+        }];
+        files.extend(prepared.additional_files);
         // Detect external edits during network I/O before staging any configuration mutation.
-        let current = match fs::read(path) {
-            Ok(v) => Some(v),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-            Err(e) => return Err(e.into()),
-        };
-        if current != *before {
-            bail!("配置在接入期间已变化，请重试")
+        let mut receipts = vec![];
+        for file in &files {
+            let current = match fs::read(&file.path) {
+                Ok(bytes) => Some(bytes),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                Err(e) => return Err(e.into()),
+            };
+            if current != file.before {
+                bail!("配置在接入期间已变化，请重试")
+            }
+            let backup_path = if let Some(bytes) = &file.before {
+                let backup = self.directory.join("backups").join(format!(
+                    "{}-{}",
+                    key.key_id,
+                    crate::auth::create_pkce().code_verifier
+                ));
+                atomic_write(&backup, bytes)?;
+                Some(backup)
+            } else {
+                None
+            };
+            receipts.push(FileReceipt {
+                path: file.path.clone(),
+                existed: file.before.is_some(),
+                backup_path,
+                fields: file.fields.clone(),
+                created_containers: file.created_containers.clone(),
+            });
         }
-        let backup_path = if let Some(bytes) = before {
-            let backup = self.directory.join("backups").join(format!(
-                "{}-{}.json",
-                key.key_id,
-                crate::auth::create_pkce().code_verifier
-            ));
-            atomic_write(&backup, bytes)?;
-            Some(backup)
-        } else {
-            None
-        };
         let record = ConnectionRecord {
             version: 1,
             tool,
@@ -310,30 +329,36 @@ impl ConnectionManager {
             owner: key.owner.clone(),
             bound_workspace: key.bound_workspace.clone(),
             protocol: prepared.protocol.into(),
-            models: vec!["glm-5.3".into()],
-            model_snapshot: vec![model],
+            models: models
+                .iter()
+                .map(|model| model["id"].as_str().unwrap().into())
+                .collect(),
+            model_snapshot: models,
             gateway_url: self.gateway_url.clone(),
             created_at: crate::config::now_iso8601(),
-            receipts: vec![FileReceipt {
-                path: path.into(),
-                existed: before.is_some(),
-                backup_path,
-                fields: prepared.fields,
-                created_containers: prepared.created_containers,
-            }],
+            receipts,
             api_key: key.api_key.clone(),
         };
         records.push(record.clone());
         let serialized = serde_json::to_vec_pretty(records)?;
-        atomic_write(path, &prepared.bytes)?;
-        if atomic_write(&self.directory.join("connections.json"), &serialized).is_err() {
-            let rollback = if let Some(bytes) = before {
-                atomic_write(path, bytes)
-            } else {
-                fs::remove_file(path).map_err(Into::into)
-            };
-            rollback.context("连接记录保存失败，且配置回滚失败；请使用备份恢复")?;
-            bail!("连接记录保存失败，原配置已恢复")
+        let mut applied = 0;
+        let transaction = (|| -> Result<()> {
+            for file in &files {
+                atomic_write(&file.path, &file.bytes)?;
+                applied += 1;
+            }
+            atomic_write(&self.directory.join("connections.json"), &serialized)
+        })();
+        if transaction.is_err() {
+            for file in files[..applied].iter().rev() {
+                let rollback = if let Some(bytes) = &file.before {
+                    atomic_write(&file.path, bytes)
+                } else {
+                    fs::remove_file(&file.path).map_err(Into::into)
+                };
+                rollback.context("接入保存失败，且配置回滚失败；请使用备份恢复")?;
+            }
+            bail!("接入保存失败，原配置已恢复")
         }
         Ok(record.summary())
     }

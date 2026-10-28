@@ -1,23 +1,37 @@
-use super::FieldReceipt;
+use super::{harness::HarnessConfig, FieldReceipt};
 use crate::ToolId;
 use anyhow::{bail, Context, Result};
 use serde_json::{json, Value};
+use std::path::{Path, PathBuf};
 use toml_edit::DocumentMut;
 
 pub(super) enum ConfigDocument {
     Claude(Value),
     Codex(DocumentMut),
+    Harness(Option<HarnessConfig>),
+}
+
+pub(super) struct PreparedFile {
+    pub path: PathBuf,
+    pub before: Option<Vec<u8>>,
+    pub bytes: Vec<u8>,
+    pub fields: Vec<FieldReceipt>,
+    pub created_containers: Vec<String>,
 }
 
 pub(super) struct PreparedConfiguration {
     pub bytes: Vec<u8>,
     pub fields: Vec<FieldReceipt>,
     pub created_containers: Vec<String>,
+    pub additional_files: Vec<PreparedFile>,
     pub protocol: &'static str,
 }
 
 impl ConfigDocument {
-    pub fn parse(tool: ToolId, before: &Option<Vec<u8>>) -> Result<Self> {
+    pub fn parse(tool: ToolId, before: &Option<Vec<u8>>, path: &Path) -> Result<Self> {
+        if tool == ToolId::DeepSeekHarness {
+            return Ok(Self::Harness(Some(HarnessConfig::read(path)?)));
+        }
         if tool == ToolId::Codex {
             let document = match before {
                 Some(bytes) => std::str::from_utf8(bytes)
@@ -84,9 +98,25 @@ impl ConfigDocument {
         &mut self,
         gateway: &str,
         key: &str,
-        model: &Value,
+        models: &[Value],
     ) -> Result<PreparedConfiguration> {
+        let model = models.first().context("当前 Key 没有兼容模型")?;
         match self {
+            Self::Harness(config) => {
+                let mut files = config
+                    .take()
+                    .context("Harness 配置已应用")?
+                    .apply(gateway, key, models)?
+                    .into_iter();
+                let primary = files.next().context("Harness 配置缺失")?;
+                Ok(PreparedConfiguration {
+                    bytes: primary.bytes,
+                    fields: primary.fields,
+                    created_containers: primary.created_containers,
+                    additional_files: files.collect(),
+                    protocol: "OPENAI_CHAT_COMPLETIONS",
+                })
+            }
             Self::Codex(document) => {
                 let mut created_containers = vec![];
                 if document.get("model_providers").is_none() {
@@ -159,6 +189,7 @@ impl ConfigDocument {
                     bytes: document.to_string().into_bytes(),
                     fields,
                     created_containers,
+                    additional_files: vec![],
                     protocol: "OPENAI_RESPONSES",
                 })
             }
@@ -204,6 +235,7 @@ impl ConfigDocument {
                     bytes: serde_json::to_vec_pretty(config)?,
                     fields,
                     created_containers,
+                    additional_files: vec![],
                     protocol: "ANTHROPIC_MESSAGES",
                 })
             }
