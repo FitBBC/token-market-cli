@@ -1,12 +1,14 @@
 use serde::Serialize;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Mutex,
+    Arc, Mutex,
 };
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_opener::OpenerExt;
-use tokensmarket_core::desktop::{DesktopClient, DesktopLogin, DesktopSession, LoginAttempt};
+use tokensmarket_core::desktop::{
+    DesktopClient, DesktopLogin, DesktopSession, LoginAttempt, NativeDesktopCredentials,
+};
 
 use tokensmarket_core::setup::{run_setup, SetupProgress};
 
@@ -123,15 +125,20 @@ struct DesktopState {
     error: Mutex<Option<String>>,
     generation: Mutex<u64>,
     exchanging: AtomicBool,
+    refreshing: AtomicBool,
 }
 
 fn desktop_value(app: &AppHandle) -> serde_json::Value {
     let state = app.state::<DesktopState>();
-    let session = state.session.lock().expect("desktop session lock");
+    let mut session = state.session.lock().expect("desktop session lock");
+    if session.as_ref().is_some_and(|s| !s.is_valid()) {
+        *session = None;
+    }
     let pending = state.login.pending().ok().flatten();
     serde_json::json!({
         "pending": pending,
         "exchanging": state.exchanging.load(Ordering::SeqCst),
+        "restoring": state.refreshing.load(Ordering::SeqCst),
         "context": session.as_ref().map(|s| serde_json::json!({
             "user": s.user,
             "default_workspace": s.default_workspace,
@@ -144,6 +151,59 @@ fn desktop_value(app: &AppHandle) -> serde_json::Value {
 #[tauri::command]
 fn desktop_login_status(app: AppHandle) -> serde_json::Value {
     desktop_value(&app)
+}
+
+#[tauri::command]
+async fn refresh_desktop_session(app: AppHandle) -> serde_json::Value {
+    let state = app.state::<DesktopState>();
+    if state.refreshing.swap(true, Ordering::SeqCst) {
+        return desktop_value(&app);
+    }
+    let generation = *state.generation.lock().expect("desktop generation lock");
+    let result = state.login.restore().await;
+    {
+        let current = state.generation.lock().expect("desktop generation lock");
+        if *current == generation {
+            match result {
+                Ok(session) => {
+                    *state.session.lock().expect("desktop session lock") = session;
+                    *state.error.lock().expect("desktop error lock") = None;
+                }
+                Err(error) => {
+                    *state.session.lock().expect("desktop session lock") = None;
+                    *state.error.lock().expect("desktop error lock") = Some(error.to_string());
+                }
+            }
+        }
+        state.refreshing.store(false, Ordering::SeqCst);
+    }
+    let value = desktop_value(&app);
+    let _ = app.emit("desktop-login-status", &value);
+    value
+}
+
+#[tauri::command]
+async fn logout_desktop_session(app: AppHandle) -> Result<serde_json::Value, String> {
+    let state = app.state::<DesktopState>();
+    *state.generation.lock().expect("desktop generation lock") += 1;
+    *state.session.lock().expect("desktop session lock") = None;
+    state.exchanging.store(false, Ordering::SeqCst);
+    let result = state.login.logout().await;
+    let (remote_revoked, warning) = match result {
+        Ok(true) => (true, None),
+        Ok(false) => (
+            false,
+            Some("已退出本机登录；服务端会话撤销未确认。已有 Agent 配置保留。".to_string()),
+        ),
+        Err(error) => {
+            *state.error.lock().expect("desktop error lock") = Some(error.to_string());
+            let _ = app.emit("desktop-login-status", desktop_value(&app));
+            return Err(error.to_string());
+        }
+    };
+    *state.error.lock().expect("desktop error lock") = warning.clone();
+    let _ = app.emit("desktop-login-status", desktop_value(&app));
+    Ok(serde_json::json!({"remote_revoked":remote_revoked,"warning":warning}))
 }
 
 #[tauri::command]
@@ -192,16 +252,23 @@ fn accept_desktop_callback(app: AppHandle, callback: String) {
             return;
         }
         let generation = {
-            let generation = state.generation.lock().expect("desktop generation lock");
+            let mut generation = state.generation.lock().expect("desktop generation lock");
             if state.exchanging.swap(true, Ordering::SeqCst) {
                 return;
             }
+            *generation += 1;
             *generation
         };
         let result = state.login.complete(&callback).await;
         {
             let current = state.generation.lock().expect("desktop generation lock");
             if *current != generation {
+                if let Ok(session) = result {
+                    // complete() may have saved just before the user cancelled the native command.
+                    if let Err(error) = state.login.discard_unaccepted_session(&session) {
+                        *state.error.lock().expect("desktop error lock") = Some(error.to_string());
+                    }
+                }
                 return;
             }
             state.exchanging.store(false, Ordering::SeqCst);
@@ -238,15 +305,22 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(SetupState::default())
         .setup(|app| {
+            let api_base = tokensmarket_core::config::console_api_base_url();
             app.manage(DesktopState {
-                login: DesktopLogin::new(
+                login: DesktopLogin::with_credentials(
                     app.path().app_local_data_dir()?.join("desktop-login"),
-                    DesktopClient::new(tokensmarket_core::config::console_api_base_url()),
+                    DesktopClient::new(api_base.clone()),
+                    Arc::new(NativeDesktopCredentials::new(&api_base)),
                 ),
                 session: Mutex::new(None),
                 error: Mutex::new(None),
                 generation: Mutex::new(0),
                 exchanging: AtomicBool::new(false),
+                refreshing: AtomicBool::new(false),
+            });
+            let restore_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                refresh_desktop_session(restore_handle).await;
             });
             let handle = app.handle().clone();
             app.deep_link().on_open_url(move |event| {
@@ -267,6 +341,8 @@ pub fn run() {
             setup_status,
             reopen_authorize,
             desktop_login_status,
+            refresh_desktop_session,
+            logout_desktop_session,
             begin_desktop_login,
             cancel_desktop_login,
             reopen_desktop_login,
