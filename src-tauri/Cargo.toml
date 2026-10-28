@@ -5,7 +5,7 @@ description = "Token Market Setup"
 authors = ["Token Market"]
 license = "UNLICENSED"
 edition = "2021"
-rust-version = "1.80"
+rust-version = "1.90"
 
 [lib]
 name = "app_lib"
@@ -20,3 +20,6 @@ serde_json = "1"
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tokensmarket-core = { path = "../rust/tokensmarket-core" }
+
+tauri-plugin-deep-link = "2"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
