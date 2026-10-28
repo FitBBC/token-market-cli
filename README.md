@@ -14,11 +14,18 @@ tokensmarket test claude-code
 tokensmarket keys
 ```
 
-For non-technical users, launch the guided macOS app:
+For non-technical users, download the guided desktop app from GitHub Releases:
+
+- macOS: download the `.dmg`, open it, and drag **Token Market Setup** into **Applications**.
+- Windows: download the `x64-setup.exe` installer and run it.
+
+The app is not yet signed and notarized with an Apple Developer ID. If macOS blocks the first launch, run:
 
 ```bash
-open "Token Market Setup.app"
+xattr -cr "/Applications/Token Market Setup.app"
 ```
+
+Then open the app normally.
 
 ## Supported tools
 
