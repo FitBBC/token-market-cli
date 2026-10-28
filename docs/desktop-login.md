@@ -44,3 +44,28 @@ supported. On Windows test the packaged installer registration and secondary
 process forwarding. Use a real pending request with a fake/local platform for
 smoke tests until target deployment is authorized. The browser success page uses
 a child browsing context to request the protocol and retains a manual open link.
+
+## Workspace/account controls
+
+The signed-in header uses `desktop_workspace_context` and `switch_desktop_workspace`.
+They call the public core `DesktopWorkspaceController` boundary, which serializes
+shared preference saves and discards stale balance completions. Scoped HTTP uses
+only Rust-held desktop Bearer plus `X-Workspace-Id`. Balance amount remains a
+decimal string in display units, with authoritative server currency. The account
+ID may be a parent of the selected L2; Current Workspace stays the requested ID.
+No Agent configuration or saved Tool Connection is rewritten on switch.
+
+`open_desktop_account_page({action})` accepts only profile/tokens/billing/workspaces
+or recharge and opens the authenticated session's server-configured `web_origin`.
+An explicit operator `TOKEN_MARKET_CONSOLE_WEB_BASE_URL` overrides this origin;
+missing origin fails closed and asks the user to sign in again. Browser URLs
+carry only workspace ID and allowed action; browser login and target permissions
+are rechecked by `/desktop/console` or `/desktop/recharge` before opening existing
+console/Billing UI. Returning focus refreshes account/balance without assuming
+payment success. The website route needs deployment alongside these clients.
+
+2026-10-28 verification: core fake-HTTP/temp-file tests cover two spaces, shared
+preference save, decimal precision, L2 parent account and stale balance; browser
+fixture inspected avatar/nested menu, switching and balance labels. This is
+simulated behavior, not macOS/Windows opener, callback, real account/balance,
+recharge or target deployment proof. No payment/model request was submitted.

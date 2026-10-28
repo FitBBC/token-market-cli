@@ -20,6 +20,8 @@ pub struct DesktopIdentity {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DesktopSession {
+    #[serde(default)]
+    pub web_origin: Option<String>,
     pub session_token: String,
     pub expires_at: String,
     pub user: DesktopIdentity,

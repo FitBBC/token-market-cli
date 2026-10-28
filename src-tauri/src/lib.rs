@@ -1,3 +1,4 @@
+mod workspace;
 use serde::Serialize;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -237,6 +238,7 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .manage(SetupState::default())
+        .manage(workspace::WorkspaceState::new())
         .setup(|app| {
             app.manage(DesktopState {
                 login: DesktopLogin::new(
@@ -262,6 +264,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            workspace::desktop_workspace_context,
+            workspace::switch_desktop_workspace,
+            workspace::open_desktop_account_page,
             tool_status,
             start_setup,
             setup_status,
