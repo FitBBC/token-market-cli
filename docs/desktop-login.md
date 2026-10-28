@@ -108,10 +108,23 @@ checks remain separate from simulated behavior and compilation:
 
 | Platform | Save/read/delete in OS private store | App restart | Computer restart | Locked/denied store | Offline logout and account change |
 | --- | --- | --- | --- | --- | --- |
-| macOS | Pending | Pending | Pending | Pending | Pending |
+| macOS | Isolated fixture passed (2026-10-28) | Pending | Pending | Pending | Pending |
 | Windows | Pending | Pending | Pending | Pending | Pending |
 
-No native keychain/credential entry was created or deleted during automated
-validation. Use an installed signed bundle and a fake/local authorized platform
-for these checks; do not substitute a successful compile for persistence proof.
+Ordinary automated suites keep `tests/native_credentials.rs` ignored and do not
+write OS credentials. To opt in on macOS or Windows, run:
+
+```sh
+cargo test --manifest-path rust/tokensmarket-core/Cargo.toml --test native_credentials --locked -- --ignored --nocapture
+```
+
+This smoke uses the production private-store adapter with a random `.invalid`
+platform namespace and a fake value, reads it from a separate process, then deletes
+only its matching fixture. It performs no network/account operations and changes
+no OS-store settings. Denied or unavailable storage fails the test; it does not
+unlock the store or fall back to plaintext. Hosted Windows native-validation CI
+explicitly opts into this test. Separate-process storage is only part of native
+acceptance: use an installed signed bundle and a fake/local authorized platform
+for app/computer restart, locked-store and login/logout checks. Do not substitute
+this smoke or a successful compile for those remaining checks.
 The keyring backend choice follows [keyring 3.6.3 documentation](https://docs.rs/keyring/3.6.3/keyring/).
