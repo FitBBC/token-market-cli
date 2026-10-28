@@ -1,4 +1,4 @@
-use super::{harness::HarnessConfig, FieldReceipt};
+use super::{harness::HarnessConfig, multi_model::MultiModelConfig, FieldReceipt};
 use crate::ToolId;
 use anyhow::{bail, Context, Result};
 use serde_json::{json, Value};
@@ -9,6 +9,7 @@ pub(super) enum ConfigDocument {
     Claude(Value),
     Codex(DocumentMut),
     Harness(Option<HarnessConfig>),
+    MultiModel(MultiModelConfig),
 }
 
 pub(super) struct PreparedFile {
@@ -29,6 +30,33 @@ pub(super) struct PreparedConfiguration {
 
 impl ConfigDocument {
     pub fn parse(tool: ToolId, before: &Option<Vec<u8>>, path: &Path) -> Result<Self> {
+        if tool == ToolId::OpenCode
+            && matches!(
+                path.extension().and_then(|v| v.to_str()),
+                Some("json" | "jsonc")
+            )
+        {
+            let sibling = path.with_extension(if path.extension().is_some_and(|v| v == "json") {
+                "jsonc"
+            } else {
+                "json"
+            });
+            if sibling.exists() {
+                bail!("OpenCode 同时存在 JSON 与 JSONC 配置，请先确认唯一生效配置")
+            }
+        }
+        if matches!(
+            tool,
+            ToolId::WorkBuddy | ToolId::OpenClaw | ToolId::OpenCode
+        ) {
+            if !matches!(
+                path.extension().and_then(|v| v.to_str()),
+                Some("json" | "jsonc")
+            ) {
+                bail!("桌面配置需要可安全恢复的 JSON 文件路径")
+            }
+            return Ok(Self::MultiModel(MultiModelConfig::parse(tool, before)?));
+        }
         if tool == ToolId::DeepSeekHarness {
             return Ok(Self::Harness(Some(HarnessConfig::read(path)?)));
         }
@@ -102,6 +130,7 @@ impl ConfigDocument {
     ) -> Result<PreparedConfiguration> {
         let model = models.first().context("当前 Key 没有兼容模型")?;
         match self {
+            Self::MultiModel(config) => config.apply(gateway, key, models),
             Self::Harness(config) => {
                 let mut files = config
                     .take()

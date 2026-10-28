@@ -229,7 +229,17 @@ fn tokens(pointer: &str) -> Result<Vec<String>> {
         .collect())
 }
 fn selector_index(array: &[Value], token: &str) -> Result<Option<usize>> {
-    if let Some(id) = token.strip_prefix("@id=") {
+    if let Some(member) = token.strip_prefix("@value=") {
+        let mut matching = array
+            .iter()
+            .enumerate()
+            .filter(|(_, v)| v.as_str() == Some(member));
+        let index = matching.next().map(|(i, _)| i);
+        if matching.next().is_some() {
+            bail!("配置存在重复列表标识，未执行恢复")
+        }
+        Ok(index)
+    } else if let Some(id) = token.strip_prefix("@id=") {
         let mut matching = array
             .iter()
             .enumerate()
@@ -317,7 +327,7 @@ enum Format {
 impl Format {
     fn for_path(path: &Path) -> Result<Self> {
         match path.extension().and_then(|v| v.to_str()) {
-            Some("json") => Ok(Self::Json),
+            Some("json" | "jsonc") => Ok(Self::Json),
             Some("toml") => Ok(Self::Toml),
             Some("yaml" | "yml") => Ok(Self::Yaml),
             _ => bail!("不支持安全恢复此配置格式"),

@@ -7,7 +7,10 @@ pub(super) fn select(tool: ToolId, catalogue: &Value) -> Result<Vec<Value>> {
     let rows = catalogue["data"]
         .as_array()
         .context("模型目录无效，原配置已保留")?;
-    if tool == ToolId::DeepSeekHarness {
+    if matches!(
+        tool,
+        ToolId::DeepSeekHarness | ToolId::WorkBuddy | ToolId::OpenClaw | ToolId::OpenCode
+    ) {
         let mut models = vec![];
         let mut ids = std::collections::HashSet::new();
         for row in rows {

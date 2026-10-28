@@ -2,6 +2,7 @@
 mod configuration;
 mod harness;
 mod model_plan;
+mod multi_model;
 mod restore;
 mod testing;
 use configuration::{ConfigDocument, PreparedFile};
@@ -244,7 +245,12 @@ impl ConnectionManager {
         inventory.require_installed(tool)?;
         if !matches!(
             tool,
-            ToolId::ClaudeCode | ToolId::Codex | ToolId::DeepSeekHarness
+            ToolId::ClaudeCode
+                | ToolId::Codex
+                | ToolId::DeepSeekHarness
+                | ToolId::WorkBuddy
+                | ToolId::OpenClaw
+                | ToolId::OpenCode
         ) {
             bail!("此工具的桌面接入尚未开放")
         }

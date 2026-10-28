@@ -87,7 +87,7 @@ pub async fn reconnect_tool(
         return Err("账号或当前空间已改变，请重新确认接入归属".into());
     }
     let inventory = ToolInventory::current();
-    let path = tokensmarket_core::get_adapter(tool).config_path();
+    let path = inventory.config_path(tool);
     app.state::<ConnectionManager>()
         .reconnect(
             ConnectContext {
@@ -112,7 +112,7 @@ pub async fn connect_tool(app: AppHandle, tool: String) -> Result<ConnectionSumm
     inventory
         .require_installed(tool)
         .map_err(|e| e.to_string())?;
-    let path = tokensmarket_core::get_adapter(tool).config_path();
+    let path = inventory.config_path(tool);
     app.state::<ConnectionManager>()
         .connect(
             ConnectContext {
@@ -175,7 +175,9 @@ pub async fn launch_connected_tool(app: AppHandle, tool: String) -> Result<(), S
         ToolId::ClaudeCode => "claude",
         ToolId::Codex => "codex",
         ToolId::DeepSeekHarness => "dsh",
-        _ => return Err("此工具的启动入口尚未开放".into()),
+        ToolId::WorkBuddy => "workbuddy",
+        ToolId::OpenClaw => "openclaw tui",
+        ToolId::OpenCode => "opencode",
     };
     ToolInventory::current()
         .require_installed(id)
@@ -189,25 +191,23 @@ pub async fn launch_connected_tool(app: AppHandle, tool: String) -> Result<(), S
     {
         return Err("请先完成接入".into());
     }
-    if id == ToolId::DeepSeekHarness {
-        if let Some(path) = ToolInventory::current().harness_application_path() {
-            #[cfg(target_os = "macos")]
-            let result = std::process::Command::new("open")
-                .arg("-a")
-                .arg(path)
-                .status();
-            #[cfg(windows)]
-            let result = std::process::Command::new(path).spawn();
-            #[cfg(target_os = "macos")]
-            return match result {
-                Ok(status) if status.success() => Ok(()),
-                _ => Err("Harness 启动失败，请从系统应用入口重新打开".into()),
-            };
-            #[cfg(windows)]
-            return result
-                .map(|_| ())
-                .map_err(|_| "Harness 启动失败，请从系统应用入口重新打开".into());
-        }
+    if let Some(path) = ToolInventory::current().application_path(id) {
+        #[cfg(target_os = "macos")]
+        let result = std::process::Command::new("open")
+            .arg("-a")
+            .arg(path)
+            .status();
+        #[cfg(windows)]
+        let result = std::process::Command::new(path).spawn();
+        #[cfg(target_os = "macos")]
+        return match result {
+            Ok(status) if status.success() => Ok(()),
+            _ => Err("工具启动失败，请从系统应用入口重新打开".into()),
+        };
+        #[cfg(windows)]
+        return result
+            .map(|_| ())
+            .map_err(|_| "工具启动失败，请从系统应用入口重新打开".into());
     }
     #[cfg(target_os = "macos")]
     let result = std::process::Command::new("osascript")
