@@ -112,6 +112,9 @@ pub struct LegacyConnectionSummary {
     pub owner: Option<serde_json::Value>,
     pub bound_workspace: Option<serde_json::Value>,
     pub models: Vec<String>,
+    pub key_id: Option<String>,
+    pub protocol: Option<String>,
+    pub test_result: Option<crate::connections::ConnectionTestResult>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -145,7 +148,7 @@ impl ToolInventory {
             String::new(),
             String::new(),
         )
-        .list()?;
+        .summaries()?;
         Ok(adapters()
             .into_iter()
             .map(|adapter| {
@@ -159,12 +162,15 @@ impl ToolInventory {
                     config_path: self.config_path(adapter.id).display().to_string(),
                     connection: desktop
                         .iter()
-                        .find(|r| r.tool == adapter.id)
-                        .map(|r| LegacyConnectionSummary {
-                            state: "configured_untested",
-                            owner: Some(serde_json::json!(r.owner)),
-                            bound_workspace: Some(serde_json::json!(r.bound_workspace)),
+                        .find(|(tool, _)| *tool == adapter.id)
+                        .map(|(_, r)| LegacyConnectionSummary {
+                            state: r.state,
+                            owner: Some(r.owner.clone()),
+                            bound_workspace: Some(r.bound_workspace.clone()),
                             models: r.models.clone(),
+                            key_id: Some(r.key_id.clone()),
+                            protocol: Some(r.protocol.clone()),
+                            test_result: r.test_result.clone(),
                         })
                         .or_else(|| {
                             records.iter().find(|r| r.tool == adapter.id).map(|r| {
@@ -173,6 +179,9 @@ impl ToolInventory {
                                     owner: None,
                                     bound_workspace: None,
                                     models: vec![r.model.clone()],
+                                    key_id: None,
+                                    protocol: None,
+                                    test_result: None,
                                 }
                             })
                         }),

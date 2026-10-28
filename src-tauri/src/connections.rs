@@ -1,7 +1,8 @@
 use tauri::{AppHandle, Manager};
 use tokensmarket_core::{
     connections::{
-        ConnectContext, ConnectionManager, ConnectionSummary, DisconnectOutcome, DisconnectRequest,
+        ConnectContext, ConnectionManager, ConnectionSummary, ConnectionTestRequest,
+        ConnectionTestResult, DisconnectOutcome, DisconnectRequest,
     },
     inventory::ToolInventory,
     ToolId,
@@ -46,6 +47,21 @@ pub async fn connect_tool(app: AppHandle, tool: String) -> Result<ConnectionSumm
             &inventory,
             path,
         )
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Paid testing uses only the saved connection, independent of the desktop session.
+#[tauri::command]
+pub async fn test_tool_connection(
+    app: AppHandle,
+    tool: String,
+    expected_key_id: String,
+    request: ConnectionTestRequest,
+) -> Result<ConnectionTestResult, String> {
+    let tool = tokensmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
+    app.state::<ConnectionManager>()
+        .test_connection(tool, &expected_key_id, request)
         .await
         .map_err(|e| e.to_string())
 }

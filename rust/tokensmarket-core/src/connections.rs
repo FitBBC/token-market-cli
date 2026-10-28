@@ -4,7 +4,9 @@ mod harness;
 mod model_plan;
 mod multi_model;
 mod restore;
+mod testing;
 use configuration::{ConfigDocument, PreparedFile};
+pub use testing::{ConnectionTestRequest, ConnectionTestResult};
 
 use crate::{desktop::DesktopIdentity, inventory::ToolInventory, ToolId};
 use anyhow::{bail, Context, Result};
@@ -69,6 +71,8 @@ pub struct ConnectionSummary {
     pub bound_workspace: Value,
     pub models: Vec<String>,
     pub key_id: String,
+    pub protocol: String,
+    pub test_result: Option<ConnectionTestResult>,
 }
 impl ConnectionRecord {
     pub fn summary(&self) -> ConnectionSummary {
@@ -78,6 +82,8 @@ impl ConnectionRecord {
             bound_workspace: json!(self.bound_workspace),
             models: self.models.clone(),
             key_id: self.key_id.clone(),
+            protocol: self.protocol.clone(),
+            test_result: None,
         }
     }
     pub fn credential(&self) -> &str {
