@@ -379,6 +379,7 @@ pub fn run() {
             tool_status,
             connections::connect_tool,
             connections::disconnect_tool,
+            connections::test_tool_connection,
             connections::launch_connected_tool,
             desktop_tool_inventory,
             prepare_tool_connect,

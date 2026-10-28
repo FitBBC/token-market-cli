@@ -38,3 +38,7 @@
 .tool-model-list { margin-top:7px; font-size:12px; overflow-wrap:anywhere; }
 .tool-model-list summary { cursor:pointer; color:var(--muted,#666); }
 .tool-model-list ul { max-height:180px; overflow:auto; margin:8px 0 0; padding-left:20px; }
+.connection-test-dialog .test-context { overflow-wrap:anywhere; font-size:13px; }
+.connection-test-dialog .test-model-label { display:grid; gap:8px; margin:16px 0; font-size:13px; }
+.connection-test-dialog select { max-width:100%; padding:9px; border:1px solid #ccc; border-radius:7px; background:var(--surface,#fff); color:inherit; }
+.connection-test-dialog .test-feedback { min-height:28px; font-size:13px; }
