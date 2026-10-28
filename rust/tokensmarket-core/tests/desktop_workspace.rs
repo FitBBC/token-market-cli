@@ -6,15 +6,23 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 #[tokio::test]
 async fn switching_saves_shared_preference_and_keeps_decimal_parent_account_and_agent_files() {
     let root = tempfile::tempdir().unwrap();
+    let agent = root.path().join("config.toml");
+    let original_config = "model_provider = \"tokensmarket\"\nmodel = \"existing-model\"\n[model_providers.tokensmarket]\nbase_url = \"https://bound-a.example/v1\"\nexperimental_bearer_token = \"fixture-unchanged-key\"\n";
+    std::fs::write(&agent, original_config).unwrap();
     let record = root.path().join("keys.json");
-    std::fs::write(
-        &record,
-        r#"[{"tool":"codex","workspaceId":"11","keyId":"existing-key"}]"#,
-    )
-    .unwrap();
+    let records = vec![tokensmarket_core::config::ManagedKeyRecord {
+        tool: tokensmarket_core::ToolId::Codex,
+        key_name: "Existing CLI connection".into(),
+        key_id: "existing-key".into(),
+        setup_id: "existing-setup".into(),
+        config_path: agent.display().to_string(),
+        backup_path: None,
+        model: "existing-model".into(),
+        created_at: "2026-10-27T00:00:00Z".into(),
+        revocable: true,
+    }];
+    std::fs::write(&record, serde_json::to_vec(&records).unwrap()).unwrap();
     let original_record = std::fs::read(&record).unwrap();
-    let agent = root.path().join("settings.json");
-    std::fs::write(&agent, "existing bound workspace A configuration").unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     let server = tokio::spawn(async move {
@@ -75,10 +83,7 @@ async fn switching_saves_shared_preference_and_keeps_decimal_parent_account_and_
         workspace.browser_url("22", "recharge").unwrap(),
         "https://console.example.test/desktop/recharge?workspace_id=22"
     );
-    assert_eq!(
-        std::fs::read_to_string(agent).unwrap(),
-        "existing bound workspace A configuration"
-    );
+    assert_eq!(std::fs::read_to_string(agent).unwrap(), original_config);
     assert_eq!(std::fs::read(record).unwrap(), original_record);
     server.await.unwrap();
 }

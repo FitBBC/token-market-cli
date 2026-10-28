@@ -28,29 +28,20 @@ struct SetupState {
 
 // Read-only catalogue and installation gate shared with subsequent connection commands.
 #[tauri::command]
-fn desktop_tool_inventory() -> Result<Vec<tokensmarket_core::inventory::ToolInventoryEntry>, String>
-{
-    tokensmarket_core::inventory::ToolInventory::current()
-        .list()
-        .map_err(|error| error.to_string())
+fn desktop_tool_inventory() -> Result<Vec<tokensmarket_core::inventory::ToolInventoryEntry>, String> {
+    tokensmarket_core::inventory::ToolInventory::current().list().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn prepare_tool_connect(tool: String) -> Result<(), String> {
     let tool = tokensmarket_core::tool_id(&tool).map_err(|error| error.to_string())?;
-    tokensmarket_core::inventory::ToolInventory::current()
-        .require_installed(tool)
-        .map_err(|error| error.to_string())
+    tokensmarket_core::inventory::ToolInventory::current().require_installed(tool).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn download_tool(app: AppHandle, tool: String) -> Result<(), String> {
     let tool = tokensmarket_core::tool_id(&tool).map_err(|error| error.to_string())?;
-    app.opener()
-        .open_url(
-            tokensmarket_core::inventory::official_download_url(tool),
-            None::<&str>,
-        )
+    app.opener().open_url(tokensmarket_core::inventory::official_download_url(tool), None::<&str>)
         .map_err(|_| "无法打开官网下载页面，请稍后重试".into())
 }
 
