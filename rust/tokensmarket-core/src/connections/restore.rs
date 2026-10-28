@@ -76,13 +76,11 @@ pub(super) fn retire_removed_fields(
         for field in &old.fields {
             // Harness emits bootstrap ownership once, but its versioned credential document
             // still needs these markers throughout subsequent replacements.
-            let bootstrap = record.tool == crate::ToolId::DeepSeekHarness
-                && old
-                    .path
-                    .file_name()
-                    .is_some_and(|name| name == ".credentials.yaml")
-                && matches!(field.pointer.as_str(), "/version" | "/records");
-            if !bootstrap && !file.fields.iter().any(|new| new.pointer == field.pointer) {
+            let bootstrap = bootstrap_field(record.tool, &old.path, &field.pointer);
+            if !field.retired
+                && !bootstrap
+                && !file.fields.iter().any(|new| new.pointer == field.pointer)
+            {
                 set(&mut value, &field.pointer, field.before.clone())?;
                 touched.push(field.pointer.clone());
             }
@@ -90,6 +88,9 @@ pub(super) fn retire_removed_fields(
         let mut containers = old.created_containers.clone();
         containers.sort_by_key(|pointer| std::cmp::Reverse(pointer.matches('/').count()));
         for pointer in containers {
+            if !active_container(old, &pointer) {
+                continue;
+            }
             let path = tokens(&pointer)?;
             if lookup(&value, &path)?
                 .is_some_and(|v| empty_container(v, path.last().map(String::as_str)))
@@ -148,7 +149,20 @@ pub(super) fn prepare(
             None
         };
         let mut touched = vec![];
-        for (field, receipt) in receipt.fields.iter().enumerate() {
+        let mut ordered_fields: Vec<_> = receipt
+            .fields
+            .iter()
+            .enumerate()
+            .filter(|(_, field)| !field.retired)
+            .collect();
+        ordered_fields
+            .sort_by_key(|(_, field)| bootstrap_field(record.tool, &receipt.path, &field.pointer));
+        for (field, receipt) in ordered_fields {
+            if bootstrap_field(record.tool, &change.path, &receipt.pointer)
+                && external_credential_content(&value)
+            {
+                continue;
+            }
             let path = tokens(&receipt.pointer)?;
             let baseline = if record.version == 1 {
                 legacy_baseline
@@ -186,9 +200,18 @@ pub(super) fn prepare(
             set(&mut value, &receipt.pointer, baseline)?;
             touched.push(receipt.pointer.clone());
         }
+        let keep_bootstrap = record.tool == crate::ToolId::DeepSeekHarness
+            && receipt
+                .fields
+                .iter()
+                .any(|field| bootstrap_field(record.tool, &receipt.path, &field.pointer))
+            && external_credential_content(&value);
         let mut containers = receipt.created_containers.clone();
         containers.sort_by_key(|pointer| std::cmp::Reverse(pointer.matches('/').count()));
         for pointer in containers {
+            if !active_container(receipt, &pointer) || (keep_bootstrap && pointer == "/refs") {
+                continue;
+            }
             let path = tokens(&pointer)?;
             if lookup(&value, &path)?
                 .is_some_and(|v| empty_container(v, path.last().map(String::as_str)))
@@ -496,7 +519,13 @@ fn rollback(written: &[&Change]) -> Result<()> {
 
 /// Check actual owned fields before billable traffic; diagnostics never include values.
 pub(super) fn verify_applied(record: &ConnectionRecord) -> Result<()> {
-    if record.receipts.is_empty() || record.receipts.iter().all(|r| r.fields.is_empty()) {
+    if record.receipts.is_empty()
+        || record.receipts.iter().all(|receipt| {
+            receipt.fields.iter().all(|field| {
+                field.retired || bootstrap_field(record.tool, &receipt.path, &field.pointer)
+            })
+        })
+    {
         bail!("连接缺少配置证明，请重新接入")
     }
     if record.tool == crate::ToolId::DeepSeekHarness {
@@ -518,10 +547,39 @@ pub(super) fn verify_applied(record: &ConnectionRecord) -> Result<()> {
         }
         let value = Format::for_tool(record.tool, &receipt.path)?.parse(Some(&bytes))?;
         for field in &receipt.fields {
+            if field.retired || bootstrap_field(record.tool, &receipt.path, &field.pointer) {
+                continue;
+            }
             if lookup(&value, &tokens(&field.pointer)?)? != Some(&field.applied) {
                 bail!("工具接入配置已改变，请重新接入后测试")
             }
         }
     }
     Ok(())
+}
+
+/// Harness's bootstrap skeleton is format bookkeeping, not ownership of unrelated records.
+pub(super) fn bootstrap_field(tool: crate::ToolId, path: &Path, pointer: &str) -> bool {
+    tool == crate::ToolId::DeepSeekHarness
+        && path
+            .file_name()
+            .is_some_and(|name| name == ".credentials.yaml")
+        && matches!(pointer, "/version" | "/records")
+}
+fn active_container(receipt: &super::FileReceipt, pointer: &str) -> bool {
+    receipt.fields.iter().any(|field| {
+        !field.retired
+            && (field.pointer == pointer || field.pointer.starts_with(&format!("{pointer}/")))
+    })
+}
+fn external_credential_content(value: &Value) -> bool {
+    value.as_object().is_some_and(|object| {
+        object
+            .keys()
+            .any(|name| !matches!(name.as_str(), "version" | "refs" | "records"))
+    }) || ["refs", "records"].iter().any(|name| {
+        value
+            .get(name)
+            .is_some_and(|value| !value.as_object().is_some_and(|object| object.is_empty()))
+    })
 }

@@ -33,6 +33,9 @@ pub struct FieldReceipt {
     )]
     pub before: Option<Value>,
     pub applied: Value,
+    /// Retained FIRST baseline after ownership was released; not an active config requirement.
+    #[serde(default)]
+    pub retired: bool,
 }
 fn present_value<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
@@ -457,12 +460,18 @@ impl ConnectionManager {
                         if let Some(original) =
                             old.fields.iter().find(|f| f.pointer == field.pointer)
                         {
+                            if original.retired && field.before != original.before {
+                                bail!("已退出管理的配置项存在人工修改，请先取消原连接并保留修改后重新接入")
+                            }
                             field.before = original.before.clone();
                         }
                     }
                     for field in &old.fields {
                         if !receipt.fields.iter().any(|f| f.pointer == field.pointer) {
-                            receipt.fields.push(field.clone());
+                            let mut historical = field.clone();
+                            historical.retired =
+                                !restore::bootstrap_field(tool, &receipt.path, &field.pointer);
+                            receipt.fields.push(historical);
                         }
                     }
                     for container in &old.created_containers {

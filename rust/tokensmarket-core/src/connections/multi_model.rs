@@ -193,6 +193,7 @@ impl MultiModelConfig {
                 }
                 for (name, applied) in values {
                     fields.push(FieldReceipt {
+                        retired: false,
                         pointer: format!("{selector}/{name}"),
                         before: row.insert(name.into(), applied.clone()),
                         applied,
@@ -211,6 +212,7 @@ impl MultiModelConfig {
                         available.push(json!(id));
                     }
                     fields.push(FieldReceipt {
+                        retired: false,
                         pointer: format!("/availableModels/@value={}", escaped(id)),
                         before,
                         applied: json!(id),
@@ -265,6 +267,7 @@ impl MultiModelConfig {
                 super::model_plan::project_metadata(model, &mut metadata);
                 for (name, applied) in metadata.as_object().unwrap() {
                     fields.push(FieldReceipt {
+                        retired: false,
                         pointer: format!("{selector}/{name}"),
                         before: row.insert(name.clone(), applied.clone()),
                         applied: applied.clone(),
@@ -404,6 +407,7 @@ fn put(value: &mut Value, pointer: &str, applied: Value, fields: &mut Vec<FieldR
         .unwrap()
         .insert(leaf.into(), applied.clone());
     fields.push(FieldReceipt {
+        retired: false,
         pointer: pointer.into(),
         before,
         applied,

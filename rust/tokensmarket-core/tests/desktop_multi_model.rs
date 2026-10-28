@@ -59,13 +59,16 @@ async fn platform_sequence(
                 let response = catalogues[queried].clone();
                 queried += 1;
                 response
+            } else if first.starts_with("POST /v1/chat/completions ") {
+                assert!(request.contains("Bearer sk-replacement"));
+                json!({"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"OK"}}]})
             } else if first.contains("/disable ") {
                 json!({"success":true,"data":true})
             } else {
                 assert!(request.contains("Bearer desktop-secret"));
                 assert!(request.contains("\"workspace_id\":\"42\""));
                 issued += 1;
-                json!({"success":true,"data":{"api_key":if issued==1 {"sk-fixture"}else{"sk-replacement"},"key_id":if issued==1 {"9001"}else{"9002"},"owner":{"id":"u1","name":"Ada"},"bound_workspace":{"id":"42","name":"Research"}}})
+                json!({"success":true,"data":{"api_key":if issued==1 {"sk-fixture"}else{"sk-replacement"},"key_id":format!("{}",9000+issued),"owner":{"id":"u1","name":"Ada"},"bound_workspace":{"id":"42","name":"Research"}}})
             };
             let body = response.to_string();
             let status = if first.starts_with("GET ") && response["fail_http"] == true {
@@ -435,8 +438,12 @@ async fn reconnect_all_three_retires_obsolete_models_and_preserves_the_first_bas
             _ => unreachable!(),
         };
         std::fs::write(&path, serde_json::to_vec(&original).unwrap()).unwrap();
-        let (url,server)=platform_sequence(vec![json!({"data":[{"id":"obsolete","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"retained","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"],"context_window_tokens":65536,"max_output_tokens":4096}]}),json!({"data":[{"id":"retained","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"new","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]})],5).await;
-        let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+        let (url,server)=platform_sequence(vec![json!({"data":[{"id":"obsolete","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"retained","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"],"context_window_tokens":65536,"max_output_tokens":4096}]}),json!({"data":[{"id":"retained","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"new","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]})],6).await;
+        let manager = ConnectionManager::new(
+            root.path().join(".tokensmarket/desktop-connections"),
+            url.clone(),
+            url,
+        );
         manager
             .connect(context(), tool, &inventory, path.clone())
             .await
@@ -456,6 +463,39 @@ async fn reconnect_all_three_retires_obsolete_models_and_preserves_the_first_bas
             .unwrap();
         assert_eq!(outcome.connection.models, vec!["retained", "new"]);
         assert!(outcome.old_key_disabled);
+        let entry = inventory
+            .list()
+            .unwrap()
+            .into_iter()
+            .find(|entry| entry.id == tool)
+            .unwrap();
+        assert_eq!(entry.connection.unwrap().state, "configured_untested");
+        assert!(
+            manager
+                .test_connection(
+                    tool,
+                    "9002",
+                    tokensmarket_core::connections::ConnectionTestRequest {
+                        confirmed: true,
+                        model: Some("retained".into())
+                    }
+                )
+                .await
+                .unwrap()
+                .passed
+        );
+        assert_eq!(
+            inventory
+                .list()
+                .unwrap()
+                .into_iter()
+                .find(|entry| entry.id == tool)
+                .unwrap()
+                .connection
+                .unwrap()
+                .state,
+            "test_passed"
+        );
         let current = read(&path);
         assert_eq!(current["later"], true);
         match tool {
@@ -507,7 +547,7 @@ async fn reconnect_all_three_retires_obsolete_models_and_preserves_the_first_bas
                 .push(json!("later"));
         }
         assert_eq!(read(&path), expected);
-        assert_eq!(server.await.unwrap().len(), 5);
+        assert_eq!(server.await.unwrap().len(), 6);
     }
 }
 
@@ -586,5 +626,184 @@ async fn opencode_jsonc_keeps_comments_filename_and_manual_settings_through_repl
     assert!(restored.contains("\"later\": [1,2,]"));
     assert!(restored.contains("other/model") && restored.contains("\"custom\": true"));
     assert!(!restored.contains("tokensmarket") && !path.with_extension("json").exists());
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn disappearing_and_reappearing_models_restore_first_missing_and_explicit_null_baselines() {
+    use tokensmarket_core::connections::DisconnectRequest;
+    let root = tempdir().unwrap();
+    let inv = inventory(root.path());
+    let path = root.path().join("opencode.json");
+    let original = json!({"provider":{"tokensmarket":{"options":{"apiKey":null},"models":{"alpha":{"name":"Personal","limit":{"context":null},"custom":true}}}},"model":"personal/model"});
+    std::fs::write(&path, original.to_string()).unwrap();
+    let rich = json!({"data":[{"id":"alpha","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"],"context_window_tokens":65536,"max_output_tokens":4096},{"id":"beta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]});
+    let small = json!({"data":[{"id":"beta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]});
+    let (url, server) = platform_sequence(vec![rich.clone(), small.clone(), rich, small], 14).await;
+    let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+    manager
+        .connect(context(), ToolId::OpenCode, &inv, path.clone())
+        .await
+        .unwrap();
+    for (old, next) in [("9001", "9002"), ("9002", "9003"), ("9003", "9004")] {
+        manager
+            .reconnect(context(), ToolId::OpenCode, old, &inv, path.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            manager.summaries().unwrap()[0].1.state,
+            "configured_untested"
+        );
+        assert!(
+            manager
+                .test_connection(
+                    ToolId::OpenCode,
+                    next,
+                    tokensmarket_core::connections::ConnectionTestRequest {
+                        confirmed: true,
+                        model: Some("beta".into())
+                    }
+                )
+                .await
+                .unwrap()
+                .passed
+        );
+        let current = read(&path);
+        if next != "9003" {
+            assert_eq!(
+                current["provider"]["tokensmarket"]["models"]["alpha"],
+                original["provider"]["tokensmarket"]["models"]["alpha"]
+            );
+        } else {
+            assert_eq!(
+                current["provider"]["tokensmarket"]["models"]["alpha"]["limit"],
+                json!({"context":65536,"output":4096})
+            );
+        }
+    }
+    manager
+        .disconnect(ToolId::OpenCode, "9004", None, DisconnectRequest::default())
+        .await
+        .unwrap();
+    assert_eq!(read(&path), original);
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn edits_to_retired_fields_remain_unowned_and_reacquisition_requires_explicit_repair() {
+    use tokensmarket_core::connections::{ConnectionTestRequest, DisconnectRequest};
+    let root = tempdir().unwrap();
+    let inv = inventory(root.path());
+    let path = root.path().join("opencode.json");
+    let original = json!({"provider":{"tokensmarket":{"options":{"apiKey":null},"models":{"alpha":{"name":"Personal","limit":{"context":null}}}}}});
+    std::fs::write(&path, original.to_string()).unwrap();
+    let rich = json!({"data":[{"id":"alpha","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"],"context_window_tokens":65536,"max_output_tokens":4096},{"id":"beta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]});
+    let small = json!({"data":[{"id":"beta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]});
+    let (url, server) = platform_sequence(vec![rich.clone(), small.clone(), rich, small], 13).await;
+    let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+    manager
+        .connect(context(), ToolId::OpenCode, &inv, path.clone())
+        .await
+        .unwrap();
+    manager
+        .reconnect(context(), ToolId::OpenCode, "9001", &inv, path.clone())
+        .await
+        .unwrap();
+    let mut current = read(&path);
+    current["provider"]["tokensmarket"]["models"]["alpha"]["limit"]
+        .as_object_mut()
+        .unwrap()
+        .remove("context");
+    current["later"] = json!(true);
+    std::fs::write(&path, current.to_string()).unwrap();
+    assert!(
+        manager
+            .test_connection(
+                ToolId::OpenCode,
+                "9002",
+                ConnectionTestRequest {
+                    confirmed: true,
+                    model: Some("beta".into())
+                }
+            )
+            .await
+            .unwrap()
+            .passed
+    );
+    let before = std::fs::read(&path).unwrap();
+    assert!(manager
+        .reconnect(context(), ToolId::OpenCode, "9002", &inv, path.clone())
+        .await
+        .is_err());
+    assert_eq!(manager.list().unwrap()[0].key_id, "9002");
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+    manager
+        .reconnect(context(), ToolId::OpenCode, "9002", &inv, path.clone())
+        .await
+        .unwrap();
+    assert!(
+        manager
+            .test_connection(
+                ToolId::OpenCode,
+                "9004",
+                ConnectionTestRequest {
+                    confirmed: true,
+                    model: Some("beta".into())
+                }
+            )
+            .await
+            .unwrap()
+            .passed
+    );
+    manager
+        .disconnect(ToolId::OpenCode, "9004", None, DisconnectRequest::default())
+        .await
+        .unwrap();
+    let mut expected = original;
+    expected["later"] = json!(true);
+    expected["provider"]["tokensmarket"]["models"]["alpha"]["limit"] = json!({});
+    assert_eq!(read(&path), expected);
+    let requests = server.await.unwrap();
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|r| r.contains("/9003/disable"))
+            .count(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn new_opencode_jsonc_keeps_a_later_comment_when_disconnect_removes_all_managed_values() {
+    use tokensmarket_core::connections::DisconnectRequest;
+    let root = tempdir().unwrap();
+    let inv = inventory(root.path());
+    let path = root.path().join("opencode.jsonc");
+    let (url, server) = platform(
+        json!({"data":[{"id":"alpha","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]}),
+        2,
+    )
+    .await;
+    let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+    manager
+        .connect(context(), ToolId::OpenCode, &inv, path.clone())
+        .await
+        .unwrap();
+    let mut bytes = std::fs::read_to_string(&path).unwrap();
+    bytes.push_str("\n// later user comment only\n");
+    std::fs::write(&path, bytes).unwrap();
+    manager
+        .disconnect(ToolId::OpenCode, "9001", None, DisconnectRequest::default())
+        .await
+        .unwrap();
+    let restored = std::fs::read_to_string(&path).unwrap();
+    assert!(restored.contains("// later user comment only"));
+    assert_eq!(
+        jsonc_parser::cst::CstRootNode::parse(&restored, &jsonc_parser::ParseOptions::default())
+            .unwrap()
+            .to_serde_value(),
+        Some(json!({}))
+    );
+    assert!(!path.with_extension("json").exists());
     server.await.unwrap();
 }
