@@ -11,3 +11,5 @@ pub use adapters::{
 pub use setup::{run_setup, SetupOutcome, SetupProgress};
 
 pub mod desktop;
+
+pub mod inventory;

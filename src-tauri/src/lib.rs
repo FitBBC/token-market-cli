@@ -23,6 +23,25 @@ struct SetupState {
     status: Mutex<SetupStatus>,
 }
 
+// Read-only catalogue and installation gate shared with subsequent connection commands.
+#[tauri::command]
+fn desktop_tool_inventory() -> Result<Vec<tokensmarket_core::inventory::ToolInventoryEntry>, String> {
+    tokensmarket_core::inventory::ToolInventory::current().list().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn prepare_tool_connect(tool: String) -> Result<(), String> {
+    let tool = tokensmarket_core::tool_id(&tool).map_err(|error| error.to_string())?;
+    tokensmarket_core::inventory::ToolInventory::current().require_installed(tool).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn download_tool(app: AppHandle, tool: String) -> Result<(), String> {
+    let tool = tokensmarket_core::tool_id(&tool).map_err(|error| error.to_string())?;
+    app.opener().open_url(tokensmarket_core::inventory::official_download_url(tool), None::<&str>)
+        .map_err(|_| "无法打开官网下载页面，请稍后重试".into())
+}
+
 #[tauri::command]
 fn tool_status(tool: String) -> serde_json::Value {
     match tokensmarket_core::adapters::tool_id(&tool) {
@@ -263,6 +282,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             tool_status,
+            desktop_tool_inventory,
+            prepare_tool_connect,
+            download_tool,
             start_setup,
             setup_status,
             reopen_authorize,
