@@ -12,7 +12,10 @@
   };
   let authenticated = false;
   let loading = false;
+  let inventoryPending = Promise.resolve();
   let connecting = false;
+  let disconnecting = false;
+  let pendingDisconnect = null;
   let generation = 0;
   let entries = [];
   root.innerHTML = '<div class="tools-heading"><div><h2>你的 Agent</h2><p>连接本机工具，开始使用 Token Market 模型。</p></div><button class="tools-refresh" type="button">重新检测</button></div><div class="tools-feedback" role="status" aria-live="polite"></div><div class="tools-list"></div>';
@@ -54,7 +57,7 @@
         actions.append(download);
       }
       const connect = text('button', entry.connection ? '重新接入' : '接入', 'primary tool-connect');
-      connect.type = 'button'; connect.disabled = !entry.canConnect || loading || connecting || (entry.connection?.state === 'configured_untested');
+      connect.type = 'button'; connect.disabled = !entry.canConnect || loading || connecting || disconnecting || (entry.connection?.state === 'configured_untested');
       if (!entry.canConnect) connect.title = '请先安装此工具并重新检测';
       connect.onclick = async () => {
         connect.disabled = true;
@@ -67,11 +70,31 @@
         } catch (error) { feedback(String(error), true); await refresh(); }
         finally { connect.disabled = !entry.canConnect || connecting || (entry.connection?.state === 'configured_untested'); }
       };
-      actions.append(connect); row.append(actions); list.append(row);
+      actions.append(connect);
+      if (entry.connection && entry.connection.state !== 'legacy') {
+        const menu = document.createElement('details'); menu.className = 'tool-menu';
+        const toggle = text('summary', '操作 ▾'); menu.append(toggle);
+        const options = document.createElement('div'); options.className = 'tool-menu-options';
+        const launch = text('button', '启动 / 重新启动', 'tool-launch'); launch.type = 'button';
+        launch.disabled = !entry.installed || connecting || disconnecting;
+        launch.onclick = async () => {
+          menu.open = false; const current = generation;
+          try { await invoke('launch_connected_tool', {tool:entry.id}); if (authenticated && current === generation) feedback('已请求启动。现有会话请退出后重新启动以读取配置。'); }
+          catch (error) { if (authenticated && current === generation) feedback(String(error), true); }
+        };
+        const disconnect = text('button', 'Disconnect · 取消接入', 'tool-disconnect'); disconnect.type = 'button';
+        disconnect.disabled = connecting || disconnecting;
+        disconnect.onclick = () => { menu.open = false; runDisconnect(entry, {revision:null,resolutions:[]}); };
+        options.append(launch, disconnect); menu.append(options); actions.append(menu);
+      }
+      row.append(actions); list.append(row);
     });
   }
-  async function refresh() {
-    if (!authenticated || loading) return;
+  async function refresh(waitForCurrent = false) {
+    if (!authenticated) return;
+    if (loading) { if (waitForCurrent === true) { await inventoryPending; return refresh(true); } return; }
+    let finishInventory;
+    inventoryPending = new Promise(resolve => { finishInventory = resolve; });
     loading = true; const current = generation;
     refreshButton.disabled = true; refreshButton.textContent = '检测中…';
     render();
@@ -80,16 +103,57 @@
       if (authenticated && current === generation) { entries = next; feedback('安装状态已更新'); }
     } catch (error) { if (authenticated && current === generation) { entries = []; feedback(String(error), true); } }
     finally {
-      loading = false; refreshButton.disabled = false; refreshButton.textContent = '重新检测';
+      loading = false; finishInventory(); refreshButton.disabled = false; refreshButton.textContent = '重新检测';
       if (authenticated && current === generation) render();
       else if (authenticated) refresh();
     }
+  }
+  const disconnectDialog = document.createElement('dialog'); disconnectDialog.className = 'disconnect-dialog';
+  disconnectDialog.innerHTML = '<h3>配置与恢复内容发生冲突</h3><p>检测到接入后的修改。请选择保留当前内容，或恢复接入前的原值。为保护凭据，此处只显示文件与配置项编号；取消将保留连接和所有文件。</p><div class="disconnect-conflicts"></div><div class="tool-actions"><button class="disconnect-cancel">暂不取消接入</button><button class="primary disconnect-confirm" disabled>确认恢复并取消接入</button></div>';
+  const confirmDisconnect = disconnectDialog.querySelector('.disconnect-confirm');
+  disconnectDialog.querySelector('.disconnect-cancel').onclick = () => { pendingDisconnect = null; disconnectDialog.close(); };
+  disconnectDialog.addEventListener('cancel', () => { pendingDisconnect = null; });
+  confirmDisconnect.onclick = () => {
+    if (!pendingDisconnect) return;
+    const {entry,outcome} = pendingDisconnect;
+    const choices = [...disconnectDialog.querySelectorAll('select')];
+    if (choices.some(choice => !choice.value)) return;
+    const resolutions = outcome.conflicts.map((conflict,index) => ({...conflict,choice:choices[index].value}));
+    disconnectDialog.close(); pendingDisconnect = null;
+    runDisconnect(entry, {revision:outcome.revision,resolutions});
+  };
+  async function runDisconnect(entry, request) {
+    if (!authenticated || connecting || disconnecting) return;
+    const current = generation; disconnecting = true; render(); feedback(`正在安全恢复 ${entry.name} 的本地配置…`);
+    try {
+      const outcome = await invoke('disconnect_tool', {tool:entry.id,expectedKeyId:entry.connection.keyId,request});
+      if (!authenticated || current !== generation) return;
+      if (outcome.state === 'conflicts') {
+        pendingDisconnect = {entry,outcome};
+        const choices = disconnectDialog.querySelector('.disconnect-conflicts'); choices.replaceChildren();
+        confirmDisconnect.disabled = true;
+        outcome.conflicts.forEach(conflict => {
+          const label = text('label', `文件 ${conflict.file + 1} · 配置项 ${conflict.field + 1} `);
+          const select = document.createElement('select');
+          [['','请选择'],['keep_current','保留当前内容'],['restore_original','恢复接入前原值']].forEach(([value,name]) => { const option = text('option',name); option.value = value; select.append(option); });
+          select.onchange = () => { confirmDisconnect.disabled = [...choices.querySelectorAll('select')].some(choice => !choice.value); };
+          label.append(select); choices.append(label);
+        });
+        disconnectDialog.showModal(); feedback('请明确选择每个冲突的处理方式。');
+      } else {
+        await refresh(true);
+        if (!authenticated || current !== generation) return;
+        feedback(outcome.remoteDisabled ? `${entry.name} 已在本地取消接入，原 Key 已停用。` : `${entry.name} 已在本地取消接入；原 Key 未确认停用，请在平台 Key 管理中检查。`);
+      }
+    } catch (error) { if (authenticated && current === generation) feedback(String(error), true); }
+    finally { disconnecting = false; if (authenticated && current === generation) render(); }
   }
   const supportedConnections = {'claude-code':'Claude Code', codex:'Codex CLI'};
   let launchTool = 'claude-code';
   const dialog = document.createElement('dialog');
   dialog.innerHTML = '<h3></h3><p class="restart-notice"></p><p>模型测试由你另行发起，可能产生少量费用。</p><div class="tool-actions"><button class="primary launch">打开终端运行 Claude Code</button><button class="close">完成</button></div><p class="launch-error" role="status"></p>';
   root.append(dialog);
+  root.append(disconnectDialog);
   dialog.querySelector('.close').onclick = () => dialog.close();
   dialog.querySelector('.launch').onclick = async () => {
     try { await invoke('launch_connected_tool', {tool:launchTool}); dialog.close(); }
@@ -100,7 +164,7 @@
     const name = supportedConnections[tool];
     if (!name) return;
     event.preventDefault();
-    if (connecting) return;
+    if (connecting || disconnecting) return;
     if (entries.find(entry => entry.id === tool)?.connection) {
       feedback('此工具已有配置记录，请通过后续的重新接入操作保留恢复基线。', true); return;
     }
@@ -109,7 +173,7 @@
     try {
       await invoke('connect_tool', {tool:event.detail.tool});
       if (!authenticated || actionGeneration !== generation) return;
-      await refresh();
+      await refresh(true);
       if (!authenticated || actionGeneration !== generation) return;
       feedback(`${name} 已配置 GLM-5.3，尚未测试。`);
       launchTool = tool;
@@ -132,7 +196,7 @@
       if (value === authenticated) return;
       authenticated = value; generation += 1;
       if (value) refresh();
-      else { if (dialog.open) dialog.close(); entries = []; list.replaceChildren(); feedback(''); }
+      else { if (dialog.open) dialog.close(); if (disconnectDialog.open) disconnectDialog.close(); pendingDisconnect = null; entries = []; list.replaceChildren(); feedback(''); }
     },
   };
 })();

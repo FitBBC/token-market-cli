@@ -1,6 +1,8 @@
 use tauri::{AppHandle, Manager};
 use tokensmarket_core::{
-    connections::{ConnectContext, ConnectionManager, ConnectionSummary},
+    connections::{
+        ConnectContext, ConnectionManager, ConnectionSummary, DisconnectOutcome, DisconnectRequest,
+    },
     inventory::ToolInventory,
     ToolId,
 };
@@ -44,6 +46,32 @@ pub async fn connect_tool(app: AppHandle, tool: String) -> Result<ConnectionSumm
             &inventory,
             path,
         )
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn disconnect_tool(
+    app: AppHandle,
+    tool: String,
+    expected_key_id: String,
+    request: DisconnectRequest,
+) -> Result<DisconnectOutcome, String> {
+    let tool = tokensmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
+    // Local cancellation remains available after account changes or session expiration.
+    // A current session only authorizes the optional disable of the old record's exact key.
+    let session = app
+        .state::<crate::DesktopState>()
+        .session
+        .lock()
+        .expect("desktop session lock")
+        .clone();
+    let token = session
+        .as_ref()
+        .filter(|s| s.is_valid())
+        .map(|s| s.session_token.as_str());
+    app.state::<ConnectionManager>()
+        .disconnect(tool, &expected_key_id, token, request)
         .await
         .map_err(|e| e.to_string())
 }
