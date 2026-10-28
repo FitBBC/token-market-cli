@@ -104,16 +104,9 @@ pub fn ensure_parent_directory(path: &Path) -> Result<()> {
 }
 
 pub fn write_private_file(path: &Path, contents: &str) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-
     ensure_parent_directory(path)?;
     fs::write(path, contents).with_context(|| format!("write {}", path.display()))?;
-    let metadata =
-        fs::metadata(path).with_context(|| format!("read metadata for {}", path.display()))?;
-    let mut permissions = metadata.permissions();
-    permissions.set_mode(0o600);
-    fs::set_permissions(path, permissions)
-        .with_context(|| format!("set permissions for {}", path.display()))?;
+    restrict_file_permissions(path)?;
     Ok(())
 }
 
@@ -164,8 +157,6 @@ pub fn create_backup(config_path: &Path) -> Result<Option<PathBuf>> {
 }
 
 pub fn command_exists(command: &str) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-
     let home = home_dir();
     let mut candidates: Vec<PathBuf> = Vec::new();
     if let Some(path_env) = std::env::var_os("PATH") {
@@ -187,10 +178,50 @@ pub fn command_exists(command: &str) -> bool {
 
     candidates.iter().any(|directory| {
         let candidate = directory.join(command);
-        fs::metadata(&candidate)
-            .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
-            .unwrap_or(false)
+        is_executable_file(&candidate)
     })
+}
+
+#[cfg(unix)]
+fn is_executable_file(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+
+    fs::metadata(path)
+        .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+#[cfg(windows)]
+fn is_executable_file(path: &Path) -> bool {
+    let file_name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+        .unwrap_or_default();
+    if !file_name.ends_with(".exe") {
+        return false;
+    }
+    fs::metadata(path)
+        .map(|metadata| metadata.is_file())
+        .unwrap_or(false)
+}
+
+#[cfg(unix)]
+fn restrict_file_permissions(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let metadata =
+        fs::metadata(path).with_context(|| format!("read metadata for {}", path.display()))?;
+    let mut permissions = metadata.permissions();
+    permissions.set_mode(0o600);
+    fs::set_permissions(path, permissions)
+        .with_context(|| format!("set permissions for {}", path.display()))
+}
+
+#[cfg(windows)]
+fn restrict_file_permissions(_path: &Path) -> Result<()> {
+    // Windows file privacy is governed by the user profile and parent directory ACLs.
+    Ok(())
 }
 
 pub fn parse_tool_id(value: &str) -> Result<ToolId> {

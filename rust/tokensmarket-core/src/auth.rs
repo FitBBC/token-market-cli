@@ -373,9 +373,23 @@ pub async fn authorize_and_exchange(
 }
 
 pub fn open_browser(url: &str) -> Result<()> {
-    std::process::Command::new("open")
+    #[cfg(target_os = "macos")]
+    let command = "open";
+    #[cfg(target_os = "windows")]
+    let command = "cmd";
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let command = "xdg-open";
+
+    #[cfg(target_os = "windows")]
+    let mut process = std::process::Command::new(command)
+        .args(["/C", "start", "", url])
+        .spawn()
+        .context("open browser")?;
+    #[cfg(not(target_os = "windows"))]
+    let mut process = std::process::Command::new(command)
         .arg(url)
         .spawn()
         .context("open browser")?;
+    let _ = process.wait();
     Ok(())
 }
