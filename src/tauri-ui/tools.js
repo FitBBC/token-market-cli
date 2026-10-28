@@ -16,6 +16,7 @@
   let connecting = false;
   let disconnecting = false;
   let pendingDisconnect = null;
+  let pendingReconnect = null;
   let generation = 0;
   let entries = [];
   root.innerHTML = '<div class="tools-heading"><div><h2>你的 Agent</h2><p>连接本机工具，开始使用 Token Market 模型。</p></div><button class="tools-refresh" type="button">重新检测</button></div><div class="tools-feedback" role="status" aria-live="polite"></div><div class="tools-list"></div>';
@@ -64,18 +65,19 @@
         actions.append(download);
       }
       const connect = text('button', entry.connection ? '重新接入' : '接入', 'primary tool-connect');
-      connect.type = 'button'; connect.disabled = !entry.canConnect || loading || connecting || disconnecting || testing || (entry.connection?.state === 'configured_untested');
+      connect.type = 'button'; connect.disabled = !entry.canConnect || loading || connecting || disconnecting || testing || entry.connection?.state === 'legacy';
       if (!entry.canConnect) connect.title = '请先安装此工具并重新检测';
       connect.onclick = async () => {
         connect.disabled = true;
         const actionGeneration = generation;
         try {
+          if (entry.connection && entry.connection.state !== 'legacy') { await beginReconnect(entry); return; }
           await invoke('prepare_tool_connect', {tool:entry.id});
           if (!authenticated || actionGeneration !== generation) return;
           const event = new CustomEvent('tokenmarket-connect-request', {detail:{tool:entry.id}, cancelable:true});
           if (window.dispatchEvent(event)) feedback('接入功能正在准备中。');
         } catch (error) { feedback(String(error), true); await refresh(); }
-        finally { connect.disabled = !entry.canConnect || connecting || (entry.connection?.state === 'configured_untested'); }
+        finally { connect.disabled = !entry.canConnect || connecting || disconnecting || Boolean(window.TokenMarketConnectionTests?.busy) || entry.connection?.state === 'legacy'; }
       };
       actions.append(connect);
       if (entry.connection && entry.connection.state !== 'legacy') {
@@ -158,6 +160,26 @@
     } catch (error) { if (authenticated && current === generation) feedback(String(error), true); }
     finally { disconnecting = false; if (authenticated && current === generation) render(); }
   }
+  const reconnectDialog = document.createElement('dialog'); reconnectDialog.className = 'reconnect-dialog';
+  reconnectDialog.innerHTML = '<h3>确认重新接入</h3><p class="reconnect-from"></p><p class="reconnect-to"></p><p>将使用当前登录账号与当前空间取得新 Key 并重新读取模型目录。新配置保存后才尝试停用旧 Key；跨账号可能无权停用旧 Key。</p><div class="tool-actions"><button class="reconnect-cancel">取消</button><button class="primary reconnect-confirm">确认重新接入</button></div>';
+  root.append(reconnectDialog);
+  reconnectDialog.querySelector('.reconnect-cancel').onclick = () => { pendingReconnect = null; reconnectDialog.close(); };
+  reconnectDialog.addEventListener('cancel', () => { pendingReconnect = null; });
+  reconnectDialog.querySelector('.reconnect-confirm').onclick = () => {
+    const pending = pendingReconnect; pendingReconnect = null; reconnectDialog.close();
+    if (pending) runConnect(pending.entry.id, pending);
+  };
+  async function beginReconnect(entry) {
+    if (connecting || disconnecting || !authenticated || window.TokenMarketConnectionTests?.busy) return;
+    const current = generation;
+    const preview = await invoke('prepare_tool_reconnect', {tool:entry.id,expectedKeyId:entry.connection.keyId});
+    if (!authenticated || current !== generation) return;
+    pendingReconnect = {entry,preview};
+    reconnectDialog.querySelector('.reconnect-from').textContent = `原连接：${preview.oldOwner.name} · ${preview.oldWorkspace.name}`;
+    reconnectDialog.querySelector('.reconnect-to').textContent = `新连接：${preview.currentOwner.name} · ${preview.currentWorkspace.name}`;
+    if (!reconnectDialog.open) reconnectDialog.showModal();
+  }
+  window.addEventListener('current-workspace-changed', () => { pendingReconnect = null; if (reconnectDialog.open) reconnectDialog.close(); });
   const supportedConnections = {'claude-code':'Claude Code', codex:'Codex CLI', 'deepseek-harness':'DeepSeek Harness',workbuddy:'WorkBuddy',openclaw:'OpenClaw',opencode:'OpenCode'};
   let launchTool = 'claude-code';
   const dialog = document.createElement('dialog');
@@ -169,24 +191,30 @@
     try { await invoke('launch_connected_tool', {tool:launchTool}); dialog.close(); }
     catch(error) { dialog.querySelector('.launch-error').textContent = String(error); }
   };
-  window.addEventListener('tokenmarket-connect-request', async event => {
+  window.addEventListener('tokenmarket-connect-request', event => {
     const tool = event.detail.tool;
+    if (!supportedConnections[tool]) return;
+    event.preventDefault(); runConnect(tool);
+  });
+  async function runConnect(tool, replacement = null) {
     const name = supportedConnections[tool];
-    if (!name) return;
-    event.preventDefault();
-    if (connecting || disconnecting) return;
-    if (entries.find(entry => entry.id === tool)?.connection) {
-      feedback('此工具已有配置记录，请通过后续的重新接入操作保留恢复基线。', true); return;
+    if (!name || !authenticated || connecting || disconnecting || window.TokenMarketConnectionTests?.busy) return;
+    if (!replacement && entries.find(entry => entry.id === tool)?.connection) {
+      feedback('连接已改变，请刷新后使用重新接入。', true); return;
     }
     const actionGeneration = generation;
     connecting = true; render(); feedback(`正在取得当前空间 Key、读取模型目录并保存 ${name} 配置…`);
     try {
-      const connected = await invoke('connect_tool', {tool:event.detail.tool});
+      const result = replacement
+        ? await invoke('reconnect_tool', {tool,expectedKeyId:replacement.entry.connection.keyId,expectedOwnerId:replacement.preview.currentOwner.id,expectedWorkspaceId:replacement.preview.currentWorkspace.id})
+        : await invoke('connect_tool', {tool});
+      const connected = replacement ? result.connection : result;
+      const cleanupNotice = replacement ? (result.oldKeyDisabled ? ' 原 Key 已停用。' : ' 旧 Key 未停用，请在平台 Key 管理中检查；新连接已保存。') : '';
       if (!authenticated || actionGeneration !== generation) return;
       await refresh(true);
       if (!authenticated || actionGeneration !== generation) return;
       const modelNotice = !['claude-code','codex'].includes(tool) ? `已导入 ${connected.models.length} 个兼容模型，尚未测试。` : '已配置 GLM-5.3，尚未测试。';
-      feedback(`${name} ${modelNotice}`);
+      feedback(`${name} ${modelNotice}${cleanupNotice}`);
       launchTool = tool;
       dialog.querySelector('h3').textContent = `${name} 已接入`;
       const guidance = {
@@ -197,10 +225,10 @@
       };
       dialog.querySelector('.restart-notice').textContent = `${modelNotice} ${guidance[tool] || `现有 ${name} 会话需要退出后重新启动，新终端将读取接入配置。`}`;
       dialog.querySelector('.launch').textContent = ['deepseek-harness','workbuddy'].includes(tool) ? `打开 ${name}` : `打开工具 / 终端运行 ${name}`;
-      dialog.querySelector('.launch-error').textContent = ''; dialog.showModal();
-    } catch(error) { feedback(String(error), true); }
-    finally { connecting = false; render(); }
-  });
+      dialog.querySelector('.launch-error').textContent = cleanupNotice; dialog.showModal();
+    } catch(error) { if (authenticated && actionGeneration === generation) feedback(String(error), true); }
+    finally { connecting = false; if (authenticated && actionGeneration === generation) render(); }
+  }
   window.addEventListener('tokenmarket-test-busy', render);
   refreshButton.onclick = refresh;
   window.addEventListener('focus', refresh);
@@ -215,7 +243,7 @@
       authenticated = value; generation += 1;
       window.dispatchEvent(new CustomEvent('tokenmarket-tools-auth', {detail:{authenticated:value}}));
       if (value) refresh();
-      else { if (dialog.open) dialog.close(); if (disconnectDialog.open) disconnectDialog.close(); pendingDisconnect = null; entries = []; list.replaceChildren(); feedback(''); }
+      else { if (reconnectDialog.open) reconnectDialog.close(); pendingReconnect = null; if (dialog.open) dialog.close(); if (disconnectDialog.open) disconnectDialog.close(); pendingDisconnect = null; entries = []; list.replaceChildren(); feedback(''); }
     },
   };
 })();

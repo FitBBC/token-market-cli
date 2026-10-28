@@ -2,16 +2,21 @@ use tauri::{AppHandle, Manager};
 use tokensmarket_core::{
     connections::{
         ConnectContext, ConnectionManager, ConnectionSummary, ConnectionTestRequest,
-        ConnectionTestResult, DisconnectOutcome, DisconnectRequest,
+        ConnectionTestResult, DisconnectOutcome, DisconnectRequest, ReconnectOutcome,
     },
     inventory::ToolInventory,
     ToolId,
 };
 
-#[tauri::command]
-pub async fn connect_tool(app: AppHandle, tool: String) -> Result<ConnectionSummary, String> {
-    let tool = tokensmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
-    // Snapshot both identities before awaiting key issuance. Later header changes cannot rebind this action.
+fn current_context(
+    app: &AppHandle,
+) -> Result<
+    (
+        tokensmarket_core::desktop::DesktopSession,
+        tokensmarket_core::desktop::DesktopIdentity,
+    ),
+    String,
+> {
     let session = app
         .state::<crate::DesktopState>()
         .session
@@ -19,7 +24,7 @@ pub async fn connect_tool(app: AppHandle, tool: String) -> Result<ConnectionSumm
         .expect("desktop session lock")
         .clone()
         .ok_or("请先登录")?;
-    let workspace = crate::workspace::current_context(&app)?;
+    let workspace = crate::workspace::current_context(app)?;
     {
         let state = app.state::<crate::DesktopState>();
         let current = state.session.lock().expect("desktop session lock");
@@ -32,6 +37,77 @@ pub async fn connect_tool(app: AppHandle, tool: String) -> Result<ConnectionSumm
     if !session.is_valid() {
         return Err("登录已过期，请重新登录".into());
     }
+    Ok((session, workspace))
+}
+/// Only safe identities cross the UI boundary; receipts and credentials remain private.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReconnectPreview {
+    old_owner: tokensmarket_core::desktop::DesktopIdentity,
+    old_workspace: tokensmarket_core::desktop::DesktopIdentity,
+    current_owner: tokensmarket_core::desktop::DesktopIdentity,
+    current_workspace: tokensmarket_core::desktop::DesktopIdentity,
+}
+#[tauri::command]
+pub fn prepare_tool_reconnect(
+    app: AppHandle,
+    tool: String,
+    expected_key_id: String,
+) -> Result<ReconnectPreview, String> {
+    let tool = tokensmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
+    let (session, workspace) = current_context(&app)?;
+    ToolInventory::current()
+        .require_installed(tool)
+        .map_err(|e| e.to_string())?;
+    let record = app
+        .state::<ConnectionManager>()
+        .list()
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|r| r.tool == tool && r.key_id == expected_key_id)
+        .ok_or("连接已改变，请刷新后重试")?;
+    Ok(ReconnectPreview {
+        old_owner: record.owner,
+        old_workspace: record.bound_workspace,
+        current_owner: session.user,
+        current_workspace: workspace,
+    })
+}
+#[tauri::command]
+pub async fn reconnect_tool(
+    app: AppHandle,
+    tool: String,
+    expected_key_id: String,
+    expected_owner_id: String,
+    expected_workspace_id: String,
+) -> Result<ReconnectOutcome, String> {
+    let tool = tokensmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
+    let (session, workspace) = current_context(&app)?;
+    if session.user.id != expected_owner_id || workspace.id != expected_workspace_id {
+        return Err("账号或当前空间已改变，请重新确认接入归属".into());
+    }
+    let inventory = ToolInventory::current();
+    let path = inventory.config_path(tool);
+    app.state::<ConnectionManager>()
+        .reconnect(
+            ConnectContext {
+                session_token: session.session_token,
+                workspace_id: workspace.id,
+            },
+            tool,
+            &expected_key_id,
+            &inventory,
+            path,
+        )
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn connect_tool(app: AppHandle, tool: String) -> Result<ConnectionSummary, String> {
+    let tool = tokensmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
+    // Capture one operation context; later header changes never rebind this action.
+    let (session, workspace) = current_context(&app)?;
     let inventory = ToolInventory::current();
     inventory
         .require_installed(tool)

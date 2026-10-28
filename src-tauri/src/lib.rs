@@ -378,6 +378,8 @@ pub fn run() {
             workspace::open_desktop_account_page,
             tool_status,
             connections::connect_tool,
+            connections::prepare_tool_reconnect,
+            connections::reconnect_tool,
             connections::disconnect_tool,
             connections::test_tool_connection,
             connections::launch_connected_tool,
