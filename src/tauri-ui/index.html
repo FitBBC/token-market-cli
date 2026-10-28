@@ -3,120 +3,105 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Token Market Setup</title>
+<title>Token Market</title>
 <style>
-:root { color-scheme: light; --blue:#2563eb; --green:#059669; --red:#dc2626; --text:#0f172a; --muted:#64748b; --border:#dbe1ea; --bg:#f5f7fb; }
+:root { color-scheme:light; --background:#fafafa; --surface:#fff; --ink:#171717; --muted:#666; --line:#e5e5e5; --error:#b42318; }
 * { box-sizing:border-box; }
-html,body { height:100%; }
-body { margin:0; display:grid; place-items:center; padding:24px; background:radial-gradient(circle at 12% 8%,rgba(37,99,235,.14),transparent 34%),radial-gradient(circle at 88% 12%,rgba(5,150,105,.12),transparent 32%),var(--bg); color:var(--text); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
-.card { width:min(820px,100%); max-height:100%; overflow:auto; background:rgba(255,255,255,.94); border:1px solid var(--border); border-radius:18px; box-shadow:0 22px 70px rgba(15,23,42,.12); padding:26px; }
-h1 { margin:0 0 6px; font-size:23px; letter-spacing:-.02em; }
-.sub { margin:0 0 20px; color:var(--muted); }
-.tools { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-@media (max-width:680px) { .tools { grid-template-columns:1fr; } }
-.tool { width:100%; text-align:left; border:1px solid var(--border); border-radius:12px; padding:14px; background:white; cursor:pointer; }
-.tool:disabled { cursor:not-allowed; color:var(--muted); background:#f8fafc; }
-.tool:not(:disabled):hover { border-color:#93c5fd; box-shadow:0 8px 20px rgba(37,99,235,.1); }
-.name { display:block; font-size:15px; font-weight:650; }
-.path { display:block; margin-top:4px; font-size:11px; color:var(--muted); word-break:break-all; }
-.state { display:inline-flex; margin-top:8px; font-size:11px; padding:3px 7px; border-radius:999px; }
-.state.ok { color:var(--green); background:#ecfdf5; }
-.state.no { color:var(--muted); background:#f1f5f9; }
-.status { margin-top:20px; border-top:1px solid var(--border); padding-top:18px; }
-.pending { color:var(--muted); }
-.error { color:var(--red); white-space:pre-wrap; }
-.success { color:var(--green); font-weight:650; }
-.result { margin:10px 0 0; padding:0; list-style:none; color:var(--muted); }
-.result li { margin-top:5px; }
-.result li.success { color:var(--green); font-weight:600; }
-.result li.failure { color:var(--red); font-weight:600; }
-a { color:var(--blue); }
+body { margin:0; min-height:100vh; color:var(--ink); background:var(--background); font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+main { min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:48px 24px; }
+.brand { font-size:22px; font-weight:650; letter-spacing:-.6px; margin-bottom:64px; }
+.panel { width:min(360px,100%); text-align:center; }
+h1 { margin:0 0 12px; font-size:28px; font-weight:600; letter-spacing:-.7px; }
+p { color:var(--muted); margin:0 0 28px; font-size:14px; }
+button { display:block; width:100%; min-height:46px; border:1px solid var(--line); border-radius:10px; font:inherit; font-size:14px; font-weight:550; cursor:pointer; background:var(--surface); color:var(--ink); margin:12px 0; padding:10px 16px; }
+button.primary { background:var(--ink); color:var(--surface); border-color:var(--ink); }
+button:hover { opacity:.8; }
+button:focus-visible { outline:3px solid #93b4ff; outline-offset:3px; }
+button:disabled { opacity:.5; cursor:wait; }
+button.quiet { border-color:transparent; background:transparent; color:var(--muted); }
+#feedback { min-height:44px; margin-top:20px; font-size:13px; overflow-wrap:anywhere; }
+#feedback.error { color:var(--error); }
+.context { margin-top:24px; padding:24px; border:1px solid var(--line); border-radius:12px; text-align:left; background:var(--surface); }
+.context span { display:block; color:var(--muted); font-size:12px; }
+.context strong { display:block; font-size:16px; overflow-wrap:anywhere; }
+footer { margin-top:64px; color:var(--muted); font-size:12px; }
+[hidden] { display:none !important; }
 </style>
 </head>
 <body>
-<main class="card">
-<h1>Token Market 一键配置</h1>
-<p class="sub">选择你正在使用的工具，浏览器会自动打开授权页面。授权完成后，这里会自动写入配置并测试。</p>
-<section id="tools" class="tools"></section>
-<section id="status" class="status"><p class="pending">正在检测本机已安装的 Agent…</p></section>
+<main>
+<div class="brand">Token Market</div>
+<section id="login" class="panel" aria-labelledby="title">
+<h1 id="title">登录 Token Market</h1>
+<p id="intro">使用浏览器中的账号登录，管理本机的 Agent。</p>
+<button id="begin" class="primary">登录</button>
+<div id="waiting" hidden>
+<p role="status">请在浏览器中完成授权</p>
+<button id="reopen" class="primary">打开登录页面</button>
+<button id="copy">复制登录链接</button>
+<button id="cancel" class="quiet">取消等待</button>
+</div>
+<div id="feedback" role="status" aria-live="polite"></div>
+</section>
+<section id="signed-in" class="panel" hidden aria-labelledby="welcome">
+<h1 id="welcome">已登录</h1>
+<p>已进入默认空间</p>
+<div class="context"><span>账号</span><strong id="account"></strong><span>当前空间</span><strong id="workspace"></strong></div>
+</section>
+<footer>Token Market · 连接你的 Agent</footer>
 </main>
 <script>
-const tools = [
-  { id: 'claude-code', name: 'Claude Code', executable: 'claude', configPath: '~/.claude/settings.json' },
-  { id: 'codex', name: 'Codex CLI', executable: 'codex', configPath: '~/.codex/config.toml' },
-  { id: 'workbuddy', name: 'WorkBuddy', executable: 'workbuddy', configPath: '~/.workbuddy/models.json' },
-  { id: 'deepseek-harness', name: 'DeepSeek Harness', executable: 'deepseek', configPath: '~/.dsh/profiles/desktop/cordis.patch.yml' },
-  { id: 'openclaw', name: 'OpenClaw', executable: 'openclaw', configPath: '~/.openclaw/openclaw.json' },
-  { id: 'opencode', name: 'OpenCode', executable: 'opencode', configPath: '~/.config/opencode/opencode.json' },
-];
-const toolsEl = document.getElementById('tools');
-const statusEl = document.getElementById('status');
-let statusPollTimer = null;
-for (const tool of tools) {
-  const button = document.createElement('button');
-  button.className = 'tool';
-  button.innerHTML = '<span class="name"></span><span class="path"></span><span class="state">检测中</span>';
-  button.querySelector('.name').textContent = tool.name;
-  button.querySelector('.path').textContent = tool.configPath;
-  window.__TAURI__.core.invoke('tool_status', { tool: tool.id }).then(status => {
-    const state = button.querySelector('.state');
-    state.textContent = status.installed ? '已安装' : '未检测到';
-    state.className = 'state ' + (status.installed ? 'ok' : 'no');
-    button.disabled = !status.installed;
-    button.querySelector('.path').textContent = status.configPath;
-  }).catch(error => {
-    const state = button.querySelector('.state');
-    state.textContent = '检测失败';
-    state.className = 'state no';
-    button.disabled = true;
-    statusEl.innerHTML = '<p class="error">检测失败：' + escapeHtml(String(error)) + '</p>';
-  });
-  button.onclick = () => start(tool.id, tool.name);
-  toolsEl.append(button);
+const invoke = window.__TAURI__.core.invoke;
+const el = id => document.getElementById(id);
+let pending = null;
+let starting = false;
+function feedback(message, isError = false) {
+  el('feedback').textContent = message;
+  el('feedback').className = isError ? 'error' : '';
 }
-async function start(tool, name) {
-  clearTimeout(statusPollTimer);
-  statusEl.innerHTML = '<p class="pending">正在启动 ' + escapeHtml(name) + ' 配置…</p>';
-  try {
-    renderStatus(await window.__TAURI__.core.invoke('start_setup', { tool }));
-  } catch (error) {
-    statusEl.innerHTML = '<p class="error">配置失败：' + escapeHtml(String(error)) + '</p>';
+function render(status) {
+  pending = status.pending;
+  const signedIn = Boolean(status.context);
+  el('login').hidden = signedIn;
+  el('signed-in').hidden = !signedIn;
+  el('waiting').hidden = !pending && !starting && !status.exchanging;
+  el('begin').hidden = Boolean(pending) || starting || Boolean(status.exchanging);
+  el('copy').disabled = !pending;
+  el('reopen').disabled = !pending;
+  if (signedIn) {
+    el('account').textContent = status.context.user.name;
+    el('workspace').textContent = status.context.default_workspace.name;
   }
+  if (status.error) feedback(status.error, true);
 }
-async function renderStatus(status) {
-  if (status.running) {
-    statusEl.innerHTML = '<p class="pending">配置进行中：请在打开的浏览器页面完成授权。完成后这里会自动继续。</p>';
-    statusPollTimer = setTimeout(async () => renderStatus(await window.__TAURI__.core.invoke('setup_status', {})), 1000);
-    return;
-  }
-  if (status.error) {
-    statusEl.innerHTML = '<p class="error">配置失败：' + escapeHtml(status.error) + '</p>';
-    return;
-  }
-  if (status.outcome) {
-    const o = status.outcome;
-    statusEl.innerHTML = '<p class="success">已配置 ' + escapeHtml(o.toolName) + '</p><p>API Key：' + escapeHtml(o.apiKeyName) + ' (' + escapeHtml(o.apiKeyId) + ')<br>模型：' + escapeHtml(o.model) + '<br>配置文件：' + escapeHtml(o.configPath) + '</p><ul class="result">' + o.tests.map(t => '<li class="' + (t.passed ? 'success' : 'failure') + '">' + (t.passed ? '✓' : '✗') + ' ' + escapeHtml(verificationName(t.name)) + (t.detail ? ' — ' + escapeHtml(verificationDetail(t.detail)) : '') + '</li>').join('') + '</ul>' + (o.requiresRestart ? '<p>请重启 ' + escapeHtml(o.toolName) + ' 后使用。</p>' : '');
-    return;
-  }
-  statusPollTimer = setTimeout(async () => renderStatus(await window.__TAURI__.core.invoke('setup_status', {})), 1000);
+el('begin').onclick = async () => {
+  starting = true;
+  feedback('正在打开浏览器…');
+  render({ pending:null });
+  try { pending = await invoke('begin_desktop_login'); feedback(''); }
+  catch (error) { feedback(String(error), true); }
+  finally { starting = false; await refresh(); }
+};
+el('copy').onclick = async () => {
+  if (!pending) return;
+  try { await navigator.clipboard.writeText(pending.authorize_url); feedback('登录链接已复制'); }
+  catch (_) { feedback('复制失败，请点击“打开登录页面”重试', true); }
+};
+el('reopen').onclick = async () => {
+  try { await invoke('reopen_desktop_login'); }
+  catch (error) { feedback(String(error), true); }
+};
+el('cancel').onclick = async () => {
+  try { await invoke('cancel_desktop_login'); starting = false; feedback('已取消等待'); await refresh(); }
+  catch (error) { feedback(String(error), true); }
+};
+async function refresh() {
+  try { render(await invoke('desktop_login_status')); }
+  catch (_) { feedback('无法读取登录状态，请重新打开应用', true); }
 }
-function verificationName(name) {
-  const names = {
-    'Model list': '模型列表',
-    'Chat request': '聊天请求',
-    'Streaming chat': '流式聊天',
-    'Tool call': '工具调用',
-  };
-  return names[name] || name;
-}
-function verificationDetail(detail) {
-  const details = {
-    'HTTP 402 Payment Required': '请求失败：HTTP 402（余额不足，或当前 Key 无权限访问该能力）',
-    'response was not a valid SSE stream': '响应不是有效的流式数据',
-  };
-  return details[detail] || detail;
-}
-function escapeHtml(value) { return String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#39;"); }
+window.__TAURI__.event.listen('desktop-login-status', event => render(event.payload));
+refresh();
+setInterval(refresh, 1000);
 </script>
 </body>
 </html>
