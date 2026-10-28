@@ -150,7 +150,7 @@ async fn connect_uses_desktop_key_and_visible_model_without_generation_and_recor
     let root = tempdir().unwrap();
     let inventory = inventory(root.path());
     let config = root.path().join("settings.json");
-    let original = json!({"permissions":{"allow":["Read"]},"env":{"OTHER_PROVIDER_KEY":"keep","ANTHROPIC_API_KEY":"old-provider"},"model":"other-model"});
+    let original = json!({"permissions":{"allow":["Read"]},"env":{"OTHER_PROVIDER_KEY":"keep","ANTHROPIC_API_KEY":"old-provider","ANTHROPIC_AUTH_TOKEN":"old-bearer"},"model":"other-model"});
     std::fs::write(&config, original.to_string()).unwrap();
     let (url, server) = platform(
         json!({"data":[{"id":"glm-5.3","context_window_tokens":202752}]}),
@@ -187,6 +187,7 @@ async fn connect_uses_desktop_key_and_visible_model_without_generation_and_recor
     assert_eq!(applied["env"]["OTHER_PROVIDER_KEY"], "keep");
     assert_eq!(applied["model"], "glm-5.3");
     assert_eq!(applied["env"]["ANTHROPIC_API_KEY"], "sk-fixture");
+    assert_eq!(applied["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-fixture");
     assert_eq!(applied["env"]["CLAUDE_CODE_MAX_CONTEXT_TOKENS"], "202752");
     let reopened = ConnectionManager::new(
         root.path().join(".tokensmarket/desktop-connections"),

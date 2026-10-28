@@ -9,7 +9,6 @@ use tokensmarket_core::{
 pub async fn connect_tool(app: AppHandle, tool: String) -> Result<ConnectionSummary, String> {
     let tool = tokensmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
     // Snapshot both identities before awaiting key issuance. Later header changes cannot rebind this action.
-    let workspace = crate::workspace::current_context(&app)?;
     let session = app
         .state::<crate::DesktopState>()
         .session
@@ -17,6 +16,16 @@ pub async fn connect_tool(app: AppHandle, tool: String) -> Result<ConnectionSumm
         .expect("desktop session lock")
         .clone()
         .ok_or("请先登录")?;
+    let workspace = crate::workspace::current_context(&app)?;
+    {
+        let state = app.state::<crate::DesktopState>();
+        let current = state.session.lock().expect("desktop session lock");
+        if current.as_ref().map(|value| &value.session_token) != Some(&session.session_token)
+            || workspace.id != session.default_workspace.id
+        {
+            return Err("账号或当前空间已改变，请刷新后重试".into());
+        }
+    }
     if !session.is_valid() {
         return Err("登录已过期，请重新登录".into());
     }

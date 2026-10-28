@@ -160,6 +160,19 @@ impl ConnectionManager {
         if context.session_token.is_empty() || context.workspace_id.is_empty() {
             bail!("请先登录并选择空间")
         }
+        for base in [&self.platform_url, &self.gateway_url] {
+            let url = url::Url::parse(base).context("接入服务地址无效")?;
+            if !url.username().is_empty()
+                || url.password().is_some()
+                || url.query().is_some()
+                || url.fragment().is_some()
+                || !(url.scheme() == "https"
+                    || (url.scheme() == "http"
+                        && matches!(url.host_str(), Some("127.0.0.1" | "localhost"))))
+            {
+                bail!("接入服务地址必须使用安全连接");
+            }
+        }
         let mut records = self.list()?;
         if records.iter().any(|r| r.tool == tool) {
             bail!("已有连接，请使用重新接入操作")
