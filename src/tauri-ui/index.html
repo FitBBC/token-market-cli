@@ -48,6 +48,8 @@ footer { margin-top:64px; color:var(--muted); font-size:12px; }
 <h1 id="welcome">已登录</h1>
 <p>已进入默认空间</p>
 <div class="context"><span>账号</span><strong id="account"></strong><span>当前空间</span><strong id="workspace"></strong></div>
+<button id="change-account">切换账号</button>
+<button id="logout" class="quiet">退出登录</button>
 </section>
 <section id="tools-region" hidden aria-label="本机 Agent 工具"></section>
 <footer>Token Market · 连接你的 Agent</footer>
@@ -70,6 +72,8 @@ function render(status) {
   window.TokenMarketTools?.setAuthenticated(signedIn);
   el('waiting').hidden = !pending && !starting && !status.exchanging;
   el('begin').hidden = Boolean(pending) || starting || Boolean(status.exchanging);
+  el('begin').disabled = Boolean(status.restoring);
+  if (status.restoring && !signedIn) feedback('正在恢复登录…');
   el('copy').disabled = !pending;
   el('reopen').disabled = !pending;
   if (signedIn) {
@@ -99,6 +103,23 @@ el('cancel').onclick = async () => {
   try { await invoke('cancel_desktop_login'); starting = false; feedback('已取消等待'); await refresh(); }
   catch (error) { feedback(String(error), true); }
 };
+el('logout').onclick = async () => {
+  try {
+    const result = await invoke('logout_desktop_session');
+    feedback(result.warning || '已退出登录，已有 Agent 配置保留', Boolean(result.warning));
+    await refresh();
+  } catch (error) { feedback(String(error), true); await refresh(); }
+};
+el('change-account').onclick = async () => {
+  try { await invoke('logout_desktop_session'); await refresh(); el('begin').click(); }
+  catch (error) { feedback(String(error), true); await refresh(); }
+};
+async function renewSession() {
+  try { render(await invoke('refresh_desktop_session')); }
+  catch (_) { feedback('无法验证桌面会话，请重新登录', true); }
+}
+window.addEventListener('focus', renewSession);
+setInterval(renewSession, 5 * 60 * 1000);
 async function refresh() {
   try { render(await invoke('desktop_login_status')); }
   catch (_) { feedback('无法读取登录状态，请重新打开应用', true); }

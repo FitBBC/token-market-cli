@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs,
     path::PathBuf,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex,
+    },
 };
 use url::Url;
 
@@ -24,6 +27,18 @@ pub struct DesktopSession {
     pub expires_at: String,
     pub user: DesktopIdentity,
     pub default_workspace: DesktopIdentity,
+    #[serde(default)]
+    pub web_origin: Option<String>,
+}
+
+impl DesktopSession {
+    pub fn is_valid(&self) -> bool {
+        !self.session_token.is_empty()
+            && !self.user.id.is_empty()
+            && !self.default_workspace.id.is_empty()
+            && DateTime::parse_from_rfc3339(&self.expires_at)
+                .is_ok_and(|expires| expires > Utc::now())
+    }
 }
 
 impl std::fmt::Debug for DesktopSession {
@@ -49,6 +64,111 @@ struct PendingLogin {
     verifier: String,
 }
 
+/// OS credential storage is the external persistence seam. Implementations must not log secrets.
+pub trait DesktopCredentialStore: Send + Sync {
+    fn read(&self) -> Result<Option<String>>;
+    fn write(&self, value: &str) -> Result<()>;
+    fn delete(&self) -> Result<()>;
+}
+
+/// Production persistence: macOS Keychain / Windows Credential Store, with no plaintext fallback.
+/// Credentials are scoped to the configured platform, so test and production logins never overlap.
+pub struct NativeDesktopCredentials {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    account: String,
+}
+impl NativeDesktopCredentials {
+    pub fn new(platform_url: &str) -> Self {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            use sha2::{Digest, Sha256};
+            Self {
+                account: format!(
+                    "platform-{:x}",
+                    Sha256::digest(platform_url.trim_end_matches('/').as_bytes())
+                ),
+            }
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            let _ = platform_url;
+            Self {}
+        }
+    }
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn entry(&self) -> Result<keyring::Entry> {
+        keyring::Entry::new("cn.tokensmarket.setup.desktop-session", &self.account)
+            .map_err(|_| anyhow::anyhow!("无法访问系统私密存储"))
+    }
+}
+impl DesktopCredentialStore for NativeDesktopCredentials {
+    fn read(&self) -> Result<Option<String>> {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            match self.entry()?.get_password() {
+                Ok(value) => Ok(Some(value)),
+                Err(keyring::Error::NoEntry) => Ok(None),
+                Err(_) => bail!("无法读取系统私密存储中的桌面会话"),
+            }
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            bail!("当前系统不支持桌面会话私密存储")
+        }
+    }
+    fn write(&self, value: &str) -> Result<()> {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            self.entry()?
+                .set_password(value)
+                .map_err(|_| anyhow::anyhow!("无法保存桌面会话到系统私密存储"))
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            let _ = value;
+            bail!("当前系统不支持桌面会话私密存储")
+        }
+    }
+    fn delete(&self) -> Result<()> {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            match self.entry()?.delete_credential() {
+                Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+                Err(_) => bail!("无法移除系统私密存储中的桌面会话"),
+            }
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            bail!("当前系统不支持桌面会话私密存储")
+        }
+    }
+}
+
+#[derive(Default)]
+struct MemoryCredentials(Mutex<Option<String>>);
+impl DesktopCredentialStore for MemoryCredentials {
+    fn read(&self) -> Result<Option<String>> {
+        Ok(self.0.lock().expect("credential lock").clone())
+    }
+    fn write(&self, value: &str) -> Result<()> {
+        *self.0.lock().expect("credential lock") = Some(value.into());
+        Ok(())
+    }
+    fn delete(&self) -> Result<()> {
+        *self.0.lock().expect("credential lock") = None;
+        Ok(())
+    }
+}
+
+#[derive(Deserialize)]
+struct SessionContext {
+    expires_at: String,
+    user: DesktopIdentity,
+    default_workspace: DesktopIdentity,
+    #[serde(default)]
+    web_origin: Option<String>,
+}
+
 pub struct DesktopClient {
     base_url: String,
     http: reqwest::Client,
@@ -60,6 +180,28 @@ impl DesktopClient {
             base_url,
             http: reqwest::Client::new(),
         }
+    }
+
+    async fn authenticated<T: for<'de> Deserialize<'de>>(
+        &self,
+        path: &str,
+        token: &str,
+    ) -> Result<T> {
+        let response = self
+            .http
+            .post(format!("{}{}", self.base_url.trim_end_matches('/'), path))
+            .bearer_auth(token)
+            .timeout(std::time::Duration::from_secs(30))
+            .send()
+            .await
+            .context("无法验证桌面会话，请重新登录")?;
+        let status = response.status();
+        let payload: serde_json::Value = response.json().await.context("会话服务返回无效响应")?;
+        if !status.is_success() || payload.get("success").and_then(|v| v.as_bool()) == Some(false) {
+            bail!("桌面会话失效或无法续期，请重新登录");
+        }
+        serde_json::from_value(payload.get("data").cloned().unwrap_or(payload))
+            .context("会话服务响应缺少必要字段")
     }
 
     async fn post<T: for<'de> Deserialize<'de>>(
@@ -91,18 +233,124 @@ impl DesktopClient {
 pub struct DesktopLogin {
     directory: PathBuf,
     client: DesktopClient,
+    credentials: Arc<dyn DesktopCredentialStore>,
     generation: AtomicU64,
     gate: std::sync::Mutex<()>,
 }
 
 impl DesktopLogin {
     pub fn new(directory: PathBuf, client: DesktopClient) -> Self {
+        Self::with_credentials(directory, client, Arc::new(MemoryCredentials::default()))
+    }
+
+    pub fn with_credentials(
+        directory: PathBuf,
+        client: DesktopClient,
+        credentials: Arc<dyn DesktopCredentialStore>,
+    ) -> Self {
         Self {
             directory,
             client,
+            credentials,
             generation: AtomicU64::new(0),
             gate: std::sync::Mutex::new(()),
         }
+    }
+
+    /// Restore only after the platform has accepted and renewed the private credential.
+    pub async fn restore(&self) -> Result<Option<DesktopSession>> {
+        let (saved, generation) = {
+            let _gate = self.gate.lock().expect("desktop login lock");
+            (
+                self.credentials.read()?,
+                self.generation.load(Ordering::SeqCst),
+            )
+        };
+        let Some(saved) = saved else {
+            return Ok(None);
+        };
+        let renewal = async {
+            let mut session: DesktopSession = serde_json::from_str(&saved)
+                .map_err(|_| anyhow::anyhow!("保存的桌面会话无效，请重新登录"))?;
+            if session.session_token.is_empty()
+                || DateTime::parse_from_rfc3339(&session.expires_at)
+                    .map_or(true, |expires| expires <= Utc::now())
+            {
+                bail!("桌面会话已过期，请重新登录");
+            }
+            let context: SessionContext = self
+                .client
+                .authenticated("/api/desktop/auth/renew", &session.session_token)
+                .await?;
+            if context.user.id != session.user.id
+                || context.default_workspace.id.is_empty()
+                || DateTime::parse_from_rfc3339(&context.expires_at)
+                    .map_or(true, |expires| expires <= Utc::now())
+            {
+                bail!("桌面会话无效，请重新登录");
+            }
+            session.expires_at = context.expires_at;
+            session.user = context.user;
+            session.default_workspace = context.default_workspace;
+            if context.web_origin.is_some() {
+                session.web_origin = context.web_origin;
+            }
+            Ok(session)
+        }
+        .await;
+        let _gate = self.gate.lock().expect("desktop login lock");
+        if generation != self.generation.load(Ordering::SeqCst) {
+            bail!("桌面会话已变更");
+        }
+        match renewal {
+            Ok(session) => {
+                self.credentials.write(&serde_json::to_string(&session)?)?;
+                Ok(Some(session))
+            }
+            Err(error) => {
+                self.credentials.delete()?;
+                Err(error)
+            }
+        }
+    }
+
+    /// Ends local desktop login even when the server is offline. False means remote revocation is unconfirmed.
+    /// Existing tool credentials and connection metadata are never read or changed here.
+    pub async fn logout(&self) -> Result<bool> {
+        let saved = {
+            let _gate = self.gate.lock().expect("desktop login lock");
+            self.cancel_locked()?;
+            let saved = self.credentials.read()?;
+            self.credentials
+                .delete()
+                .context("无法移除私密存储中的桌面会话，请重试退出")?;
+            saved
+        };
+        let Some(saved) = saved else {
+            return Ok(true);
+        };
+        let Ok(session) = serde_json::from_str::<DesktopSession>(&saved) else {
+            return Ok(false);
+        };
+        Ok(self
+            .client
+            .authenticated::<bool>("/api/desktop/auth/logout", &session.session_token)
+            .await
+            .unwrap_or(false))
+    }
+
+    /// Drop a callback result cancelled before the native command accepted it.
+    /// A stale callback must never erase a newer account's credential.
+    pub fn discard_unaccepted_session(&self, session: &DesktopSession) -> Result<()> {
+        let _gate = self.gate.lock().expect("desktop login lock");
+        if let Some(saved) = self.credentials.read()? {
+            let saved: DesktopSession =
+                serde_json::from_str(&saved).map_err(|_| anyhow::anyhow!("保存的桌面会话无效"))?;
+            if saved.session_token == session.session_token {
+                self.credentials.delete()?;
+            }
+        }
+        Ok(())
     }
 
     fn pending_path(&self) -> PathBuf {
@@ -256,6 +504,7 @@ impl DesktopLogin {
                 }),
             )
             .await?;
+        let _gate = self.gate.lock().expect("desktop login lock");
         if generation != self.generation.load(Ordering::SeqCst) {
             bail!("登录已取消");
         }
@@ -266,6 +515,7 @@ impl DesktopLogin {
         {
             bail!("登录会话无效，请重新登录");
         }
+        self.credentials.write(&serde_json::to_string(&session)?)?;
         Ok(session)
     }
 }
