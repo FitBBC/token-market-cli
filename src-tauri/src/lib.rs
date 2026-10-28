@@ -1,3 +1,4 @@
+mod workspace;
 use serde::Serialize;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -185,11 +186,15 @@ async fn refresh_desktop_session(app: AppHandle) -> serde_json::Value {
         if *current == generation {
             match result {
                 Ok(session) => {
+                    if session.is_none() {
+                        app.state::<workspace::WorkspaceState>().clear();
+                    }
                     *state.session.lock().expect("desktop session lock") = session;
                     *state.error.lock().expect("desktop error lock") = None;
                 }
                 Err(error) => {
                     *state.session.lock().expect("desktop session lock") = None;
+                    app.state::<workspace::WorkspaceState>().clear();
                     *state.error.lock().expect("desktop error lock") = Some(error.to_string());
                 }
             }
@@ -206,6 +211,7 @@ async fn logout_desktop_session(app: AppHandle) -> Result<serde_json::Value, Str
     let state = app.state::<DesktopState>();
     *state.generation.lock().expect("desktop generation lock") += 1;
     *state.session.lock().expect("desktop session lock") = None;
+    app.state::<workspace::WorkspaceState>().clear();
     state.exchanging.store(false, Ordering::SeqCst);
     let result = state.login.logout().await;
     let (remote_revoked, warning) = match result {
@@ -323,6 +329,7 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .manage(SetupState::default())
+        .manage(workspace::WorkspaceState::new())
         .setup(|app| {
             let api_base = tokensmarket_core::config::console_api_base_url();
             app.manage(DesktopState {
@@ -355,6 +362,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            workspace::desktop_workspace_context,
+            workspace::switch_desktop_workspace,
+            workspace::open_desktop_account_page,
             tool_status,
             desktop_tool_inventory,
             prepare_tool_connect,
