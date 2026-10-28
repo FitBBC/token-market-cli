@@ -165,7 +165,7 @@ impl Adapter {
                         model: value
                             .get("model")
                             .and_then(Value::as_str)
-                            .unwrap_or("glm-5.2")
+                            .unwrap_or("glm-5.3")
                             .into(),
                         context_window_tokens: value
                             .pointer("/env/CLAUDE_CODE_MAX_CONTEXT_TOKENS")
@@ -200,7 +200,7 @@ impl Adapter {
                         model: value
                             .get("model")
                             .and_then(|v| v.as_str())
-                            .unwrap_or("glm-5.2")
+                            .unwrap_or("glm-5.3")
                             .into(),
                         context_window_tokens: None,
                     }));
@@ -232,7 +232,7 @@ impl Adapter {
                                     .get("model")
                                     .and_then(Value::as_str)
                                     .or_else(|| entry.get("id").and_then(Value::as_str))
-                                    .unwrap_or("glm-5.2")
+                                    .unwrap_or("glm-5.3")
                                     .into(),
                                 context_window_tokens: entry
                                     .get("maxInputTokens")
@@ -273,7 +273,7 @@ impl Adapter {
                     model: provider
                         .pointer("/models/0/id")
                         .and_then(Value::as_str)
-                        .unwrap_or("glm-5.2")
+                        .unwrap_or("glm-5.3")
                         .into(),
                     context_window_tokens: None,
                 }))
@@ -289,7 +289,7 @@ impl Adapter {
                         return Ok(Some(ToolConfig {
                             base_url: base_url.into(),
                             api_key: api_key.into(),
-                            model: "glm-5.2".into(),
+                            model: "glm-5.3".into(),
                             context_window_tokens: None,
                         }));
                     }
@@ -307,7 +307,7 @@ impl Adapter {
                         return Ok(Some(ToolConfig {
                             base_url: base_url.into(),
                             api_key: api_key.into(),
-                            model: "glm-5.2".into(),
+                            model: "glm-5.3".into(),
                             context_window_tokens: None,
                         }));
                     }
@@ -409,7 +409,7 @@ impl Adapter {
                     "apiKey": config.api_key,
                     "api": "openai-completions",
                     "models": [
-                        {"id": "glm-5.2", "name": "GLM 5.2"},
+                        {"id": "glm-5.3", "name": "GLM 5.3"},
                         {"id": "deepseek-v4.1-flash", "name": "DeepSeek V4.1 Flash"}
                     ]
                 });
@@ -437,7 +437,7 @@ impl Adapter {
                         "apiKey": config.api_key
                     },
                     "models": {
-                        "glm-5.2": {"name": "GLM 5.2"},
+                        "glm-5.3": {"name": "GLM 5.3"},
                         "deepseek-v4.1-flash": {"name": "DeepSeek V4.1 Flash"}
                     }
                 });
@@ -477,7 +477,7 @@ fn write_deepseek_harness(
                     "apiKeyEnv": "TOKEN_MARKET_API_KEY",
                     "api": "openai-completions",
                     "baseURL": format!("{}/v1", config.base_url.trim_end_matches('/')),
-                    "models": [{"id": "glm-5.2"}, {"id": "deepseek-v4.1-flash"}]
+                    "models": [{"id": "glm-5.3"}, {"id": "deepseek-v4.1-flash"}]
                 }
             }
         },

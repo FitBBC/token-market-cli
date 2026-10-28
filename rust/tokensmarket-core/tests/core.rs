@@ -28,7 +28,7 @@ fn rejects_unsupported_tools() {
 fn resolves_model_presets() {
     assert_eq!(
         tokensmarket_core::models::resolve_model(None).unwrap(),
-        "glm-5.2"
+        "glm-5.3"
     );
     assert_eq!(
         tokensmarket_core::models::resolve_model(Some("fast")).unwrap(),

@@ -24,12 +24,12 @@ pub struct ManagedKeyRecord {
 
 pub fn console_api_base_url() -> String {
     std::env::var("TOKEN_MARKET_CONSOLE_API_BASE_URL")
-        .unwrap_or_else(|_| "https://console-api-test.tokensapi.cn".into())
+        .unwrap_or_else(|_| "https://console-api.tokensapi.cn".into())
 }
 
 pub fn gateway_api_base_url() -> String {
     std::env::var("TOKEN_MARKET_GATEWAY_API_BASE_URL")
-        .unwrap_or_else(|_| "https://api-test.tokensapi.cn".into())
+        .unwrap_or_else(|_| "https://api.tokensapi.cn".into())
 }
 
 pub fn home_dir() -> PathBuf {

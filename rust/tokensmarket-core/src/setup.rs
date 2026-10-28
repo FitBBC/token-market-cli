@@ -97,7 +97,7 @@ pub async fn run_setup(
     })?;
 
     on_progress(SetupProgress::Testing);
-    let tests: &[VerificationTest] = if model == "glm-5.2" {
+    let tests: &[VerificationTest] = if model == "glm-5.3" {
         &[
             VerificationTest::Models,
             VerificationTest::Chat,

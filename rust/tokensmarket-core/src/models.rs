@@ -33,18 +33,13 @@ pub struct ModelCapabilities {
 
 pub fn resolve_model(preset: Option<&str>) -> Result<String> {
     Ok(match ModelPreset::parse(preset)? {
-        ModelPreset::Recommended | ModelPreset::Powerful | ModelPreset::Cheap => "glm-5.2".into(),
+        ModelPreset::Recommended | ModelPreset::Powerful | ModelPreset::Cheap => "glm-5.3".into(),
         ModelPreset::Fast => "deepseek-v4.1-flash".into(),
     })
 }
 
 pub fn resolve_model_capabilities(model: &str) -> Result<ModelCapabilities> {
     match model {
-        "glm-5.2" => Ok(ModelCapabilities {
-            default_effort: "max",
-            supported_efforts: &["high", "max"],
-            can_disable_thinking: true,
-        }),
         "glm-5.3" => Ok(ModelCapabilities {
             default_effort: "max",
             supported_efforts: &["low", "high", "max"],
@@ -71,7 +66,7 @@ impl ToolConfig {
         if !self.api_key.starts_with("sk-") {
             bail!("invalid Token Market API key");
         }
-        if !["glm-5.2", "deepseek-v4.1-flash"].contains(&self.model.as_str()) {
+        if !["glm-5.3", "deepseek-v4.1-flash"].contains(&self.model.as_str()) {
             bail!("unsupported Token Market model");
         }
         Ok(())
@@ -124,7 +119,7 @@ pub async fn resolve_context_window_tokens(config: &ToolConfig) -> Result<u64> {
 
 pub fn model_names() -> BTreeMap<&'static str, &'static str> {
     BTreeMap::from([
-        ("glm-5.2", "GLM 5.2"),
+        ("glm-5.3", "GLM 5.3"),
         ("deepseek-v4.1-flash", "DeepSeek V4.1 Flash"),
     ])
 }

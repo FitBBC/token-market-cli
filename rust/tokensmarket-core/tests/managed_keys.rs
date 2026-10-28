@@ -9,7 +9,7 @@ fn deserializes_legacy_camel_case_key_records() {
         "setupId": "setup_123",
         "configPath": "/tmp/config.json",
         "backupPath": null,
-        "model": "glm-5.2",
+        "model": "glm-5.3",
         "createdAt": "2026-10-27T00:00:00.000Z",
         "revocable": true
     }]"#;
