@@ -1,4 +1,6 @@
 //! Desktop tool connections: credentials never cross the native/public-summary boundary.
+mod restore;
+
 use crate::{desktop::DesktopIdentity, inventory::ToolInventory, ToolId};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
@@ -16,8 +18,18 @@ pub struct ConnectContext {
 #[derive(Clone, Serialize, Deserialize)]
 pub struct FieldReceipt {
     pub pointer: String,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "present_value"
+    )]
     pub before: Option<Value>,
     pub applied: Value,
+}
+fn present_value<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<Value>, D::Error> {
+    Value::deserialize(deserializer).map(Some)
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub struct FileReceipt {
@@ -67,6 +79,38 @@ impl ConnectionRecord {
         &self.api_key
     }
 }
+/// Conflict identifiers are positional and deliberately exclude paths, values and credentials.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RestoreConflict {
+    pub file: usize,
+    pub field: usize,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RestoreChoice {
+    KeepCurrent,
+    RestoreOriginal,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConflictResolution {
+    pub file: usize,
+    pub field: usize,
+    pub choice: RestoreChoice,
+}
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct DisconnectRequest {
+    pub revision: Option<String>,
+    #[serde(default)]
+    pub resolutions: Vec<ConflictResolution>,
+}
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisconnectOutcome {
+    pub state: &'static str,
+    pub revision: Option<String>,
+    pub conflicts: Vec<RestoreConflict>,
+    pub remote_disabled: bool,
+}
 #[derive(Deserialize)]
 struct IssuedKey {
     api_key: String,
@@ -94,7 +138,10 @@ impl ConnectionManager {
             directory,
             platform_url,
             gateway_url,
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .expect("connection HTTP client"),
             gate: tokio::sync::Mutex::new(()),
         }
     }
@@ -332,7 +379,7 @@ impl ConnectionManager {
             None
         };
         let record = ConnectionRecord {
-            version: 1,
+            version: 2,
             tool,
             device_id: device_id.into(),
             key_id: key.key_id.clone(),
@@ -366,6 +413,66 @@ impl ConnectionManager {
         }
         Ok(record.summary())
     }
+    /// Restore the saved connection's local ownership before one optional exact-key disable.
+    /// Current account/workspace never substitute for the saved connection's provenance.
+    pub async fn disconnect(
+        &self,
+        tool: ToolId,
+        expected_key_id: &str,
+        session: Option<&str>,
+        request: DisconnectRequest,
+    ) -> Result<DisconnectOutcome> {
+        let _guard = self
+            .gate
+            .try_lock()
+            .map_err(|_| anyhow::anyhow!("工具操作正在进行，请稍候"))?;
+        let store = self.directory.join("connections.json");
+        let original_store = fs::read(&store).context("无法读取连接记录")?;
+        let mut records: Vec<ConnectionRecord> =
+            serde_json::from_slice(&original_store).context("无法读取连接记录")?;
+        let index = records
+            .iter()
+            .position(|record| record.tool == tool && record.key_id == expected_key_id)
+            .context("连接已改变，请刷新后重试")?;
+        let record = records[index].clone();
+        if !matches!(record.version, 1 | 2) {
+            bail!("连接记录版本不支持安全恢复")
+        }
+        let plan = restore::prepare(&record, &request)?;
+        if !plan.conflicts.is_empty() {
+            return Ok(DisconnectOutcome {
+                state: "conflicts",
+                revision: Some(plan.revision),
+                conflicts: plan.conflicts,
+                remote_disabled: false,
+            });
+        }
+        records.remove(index);
+        plan.commit(
+            &store,
+            &original_store,
+            &serde_json::to_vec_pretty(&records)?,
+        )?;
+        let remote_disabled = if let Some(session) = session.filter(|s| !s.is_empty()) {
+            self.disable_key(
+                session,
+                &record.bound_workspace.id,
+                &record.device_id,
+                record.tool,
+                &record.key_id,
+            )
+            .await
+            .is_ok()
+        } else {
+            false
+        };
+        Ok(DisconnectOutcome {
+            state: "disconnected",
+            revision: None,
+            conflicts: vec![],
+            remote_disabled,
+        })
+    }
     pub async fn disable_key(
         &self,
         session: &str,
@@ -395,7 +502,7 @@ impl ConnectionManager {
             bail!("Key 未确认停用")
         }
         let body: Value = response.json().await.context("Key 未确认停用")?;
-        if body["success"] != true {
+        if body["success"] != true || body["data"] != true {
             bail!("Key 未确认停用")
         }
         Ok(())
