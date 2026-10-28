@@ -28,6 +28,7 @@ h1 { margin:0 0 6px; font-size:23px; letter-spacing:-.02em; }
 .success { color:var(--green); font-weight:650; }
 .result { margin:10px 0 0; padding:0; list-style:none; color:var(--muted); }
 .result li { margin-top:5px; }
+.result li.failure { color:var(--red); font-weight:600; }
 a { color:var(--blue); }
 </style>
 </head>
@@ -93,10 +94,26 @@ async function renderStatus(status) {
   }
   if (status.outcome) {
     const o = status.outcome;
-    statusEl.innerHTML = '<p class="success">已配置 ' + escapeHtml(o.toolName) + '</p><p>API Key：' + escapeHtml(o.apiKeyName) + ' (' + escapeHtml(o.apiKeyId) + ')<br>模型：' + escapeHtml(o.model) + '<br>配置文件：' + escapeHtml(o.configPath) + '</p><ul class="result">' + o.tests.map(t => '<li>' + (t.passed ? '✓' : '✗') + ' ' + escapeHtml(t.name) + (t.detail ? ' — ' + escapeHtml(t.detail) : '') + '</li>').join('') + '</ul>' + (o.requiresRestart ? '<p>请重启 ' + escapeHtml(o.toolName) + ' 后使用。</p>' : '');
+    statusEl.innerHTML = '<p class="success">已配置 ' + escapeHtml(o.toolName) + '</p><p>API Key：' + escapeHtml(o.apiKeyName) + ' (' + escapeHtml(o.apiKeyId) + ')<br>模型：' + escapeHtml(o.model) + '<br>配置文件：' + escapeHtml(o.configPath) + '</p><ul class="result">' + o.tests.map(t => '<li class="' + (t.passed ? 'success' : 'failure') + '">' + (t.passed ? '✓' : '✗') + ' ' + escapeHtml(verificationName(t.name)) + (t.detail ? ' — ' + escapeHtml(verificationDetail(t.detail)) : '') + '</li>').join('') + '</ul>' + (o.requiresRestart ? '<p>请重启 ' + escapeHtml(o.toolName) + ' 后使用。</p>' : '');
     return;
   }
   statusPollTimer = setTimeout(async () => renderStatus(await window.__TAURI__.core.invoke('setup_status', {})), 1000);
+}
+function verificationName(name) {
+  const names = {
+    'Model list': '模型列表',
+    'Chat request': '聊天请求',
+    'Streaming chat': '流式聊天',
+    'Tool call': '工具调用',
+  };
+  return names[name] || name;
+}
+function verificationDetail(detail) {
+  const details = {
+    'HTTP 402 Payment Required': '请求失败：HTTP 402（余额不足，或当前 Key 无权限访问该能力）',
+    'response was not a valid SSE stream': '响应不是有效的流式数据',
+  };
+  return details[detail] || detail;
 }
 function escapeHtml(value) { return String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#39;"); }
 </script>
