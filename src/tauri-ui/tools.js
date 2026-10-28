@@ -31,6 +31,7 @@
     return element;
   }
   function render() {
+    const testing = Boolean(window.TokenMarketConnectionTests?.busy);
     list.replaceChildren();
     entries.forEach(entry => {
       const row = document.createElement('article'); row.className = 'tool-row';
@@ -42,7 +43,9 @@
       title.append(text('h3', entry.name), text('span', entry.installed ? '已安装' : '未安装', `tool-badge ${entry.installed ? 'installed' : ''}`));
       content.append(title);
       if (entry.connection) {
-        content.append(text('p', entry.connection.state === 'legacy' ? '检测到旧版连接记录 · 账号与计费空间未知' : `${entry.connection.owner.name} · 计费空间：${entry.connection.boundWorkspace.name} · 已配置，未测试`, 'tool-description'));
+        const testState = {configured_untested:'已配置，未测试',test_passed:'已配置 · 文本输出测试通过',test_failed:'已配置 · 文本输出测试失败'}[entry.connection.state] || '已配置，未测试';
+        content.append(text('p', entry.connection.state === 'legacy' ? '检测到旧版连接记录 · 账号与计费空间未知' : `${entry.connection.owner.name} · 计费空间：${entry.connection.boundWorkspace.name} · ${testState}`, 'tool-description'));
+        if (entry.connection.testResult) content.append(text('p', `${entry.connection.testResult.model}：${entry.connection.testResult.detail}（${entry.connection.testResult.testedAt}）`, 'tool-description'));
         const models = document.createElement('details'); models.className = 'tool-model-list';
         models.append(text('summary', `${entry.connection.models.length} 个模型`));
         const items = document.createElement('ul');
@@ -62,7 +65,7 @@
         actions.append(download);
       }
       const connect = text('button', entry.connection ? '重新接入' : '接入', 'primary tool-connect');
-      connect.type = 'button'; connect.disabled = !entry.canConnect || loading || connecting || disconnecting || entry.connection?.state === 'legacy';
+      connect.type = 'button'; connect.disabled = !entry.canConnect || loading || connecting || disconnecting || testing || entry.connection?.state === 'legacy';
       if (!entry.canConnect) connect.title = '请先安装此工具并重新检测';
       connect.onclick = async () => {
         connect.disabled = true;
@@ -74,7 +77,7 @@
           const event = new CustomEvent('tokenmarket-connect-request', {detail:{tool:entry.id}, cancelable:true});
           if (window.dispatchEvent(event)) feedback('接入功能正在准备中。');
         } catch (error) { feedback(String(error), true); await refresh(); }
-        finally { connect.disabled = !entry.canConnect || connecting || entry.connection?.state === 'legacy'; }
+        finally { connect.disabled = !entry.canConnect || connecting || disconnecting || Boolean(window.TokenMarketConnectionTests?.busy) || entry.connection?.state === 'legacy'; }
       };
       actions.append(connect);
       if (entry.connection && entry.connection.state !== 'legacy') {
@@ -82,16 +85,19 @@
         const toggle = text('summary', '操作 ▾'); menu.append(toggle);
         const options = document.createElement('div'); options.className = 'tool-menu-options';
         const launch = text('button', '启动 / 重新启动', 'tool-launch'); launch.type = 'button';
-        launch.disabled = !entry.installed || connecting || disconnecting;
+        launch.disabled = !entry.installed || connecting || disconnecting || testing;
         launch.onclick = async () => {
           menu.open = false; const current = generation;
           try { await invoke('launch_connected_tool', {tool:entry.id}); if (authenticated && current === generation) feedback('已请求启动。现有会话请退出后重新启动以读取配置。'); }
           catch (error) { if (authenticated && current === generation) feedback(String(error), true); }
         };
         const disconnect = text('button', 'Disconnect · 取消接入', 'tool-disconnect'); disconnect.type = 'button';
-        disconnect.disabled = connecting || disconnecting;
+        disconnect.disabled = connecting || disconnecting || testing;
         disconnect.onclick = () => { menu.open = false; runDisconnect(entry, {revision:null,resolutions:[]}); };
-        options.append(launch, disconnect); menu.append(options); actions.append(menu);
+        const test = text('button', 'Connection Test · 测试连接', 'tool-test'); test.type = 'button';
+        test.disabled = connecting || disconnecting || testing;
+        test.onclick = () => { menu.open = false; window.dispatchEvent(new CustomEvent('tokenmarket-test-request', {detail:{id:entry.id,name:entry.name,connection:entry.connection}})); };
+        options.append(launch, test, disconnect); menu.append(options); actions.append(menu);
       }
       row.append(actions); list.append(row);
     });
@@ -164,7 +170,7 @@
     if (pending) runConnect(pending.entry.id, pending);
   };
   async function beginReconnect(entry) {
-    if (connecting || disconnecting || !authenticated) return;
+    if (connecting || disconnecting || !authenticated || window.TokenMarketConnectionTests?.busy) return;
     const current = generation;
     const preview = await invoke('prepare_tool_reconnect', {tool:entry.id,expectedKeyId:entry.connection.keyId});
     if (!authenticated || current !== generation) return;
@@ -192,7 +198,7 @@
   });
   async function runConnect(tool, replacement = null) {
     const name = supportedConnections[tool];
-    if (!name || !authenticated || connecting || disconnecting) return;
+    if (!name || !authenticated || connecting || disconnecting || window.TokenMarketConnectionTests?.busy) return;
     if (!replacement && entries.find(entry => entry.id === tool)?.connection) {
       feedback('连接已改变，请刷新后使用重新接入。', true); return;
     }
@@ -219,6 +225,7 @@
     } catch(error) { if (authenticated && actionGeneration === generation) feedback(String(error), true); }
     finally { connecting = false; if (authenticated && actionGeneration === generation) render(); }
   }
+  window.addEventListener('tokenmarket-test-busy', render);
   refreshButton.onclick = refresh;
   window.addEventListener('focus', refresh);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
@@ -230,6 +237,7 @@
       root.hidden = !value;
       if (value === authenticated) return;
       authenticated = value; generation += 1;
+      window.dispatchEvent(new CustomEvent('tokenmarket-tools-auth', {detail:{authenticated:value}}));
       if (value) refresh();
       else { if (reconnectDialog.open) reconnectDialog.close(); pendingReconnect = null; if (dialog.open) dialog.close(); if (disconnectDialog.open) disconnectDialog.close(); pendingDisconnect = null; entries = []; list.replaceChildren(); feedback(''); }
     },
