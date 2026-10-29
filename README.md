@@ -2,7 +2,7 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-Configure Token Market in popular AI agent tools with one command. The same setup flow is available as a terminal CLI and as a guided desktop app.
+Configure Token Market in popular AI agent tools from the terminal, or sign in once to the desktop app to manage six local tools. The terminal authorizes each setup; desktop login opens the platform Default Workspace, then Connect issues a separate device/tool key. See [desktop login](docs/desktop-login.md) and [desktop management](docs/desktop-management.md).
 
 ## Installation
 
@@ -31,18 +31,22 @@ rust/tokensmarket-cli/target/release/tokensmarket --version
 
 Download the guided desktop app from GitHub Releases:
 
-- **macOS**: download the `.dmg`, open it, and drag **Token Market Setup** into **Applications**.
+- **macOS**: download the `.dmg`, open it, and drag **Token Market** into **Applications**.
 - **Windows**: download the `x64-setup.exe` installer and run it.
 
 The app is not yet signed and notarized with an Apple Developer ID. If macOS blocks the first launch, run:
 
 ```bash
-xattr -cr "/Applications/Token Market Setup.app"
+xattr -cr "/Applications/Token Market.app"
 ```
 
 Then open the app normally.
 
-## Quick start
+## Desktop quick start
+
+Sign in through the browser and return with **Open Application**. View balance or switch the Current Workspace, then **Connect** an installed tool. Its card retains its owning account and Bound Workspace. Connect does not run a paid model request; **Test** is a separate action with a charge confirmation.
+
+## Terminal quick start
 
 Run setup without arguments to choose an installed tool interactively:
 
@@ -139,12 +143,14 @@ The default preset is `recommended`.
 
 ## Security, backups, and revocation
 
-- Authorization uses PKCE and a one-time local callback at `http://127.0.0.1`.
-- The browser authorization page lets the logged-in user choose the workspace that will own the CLI API key.
+- Terminal CLI authorization uses PKCE and a one-time local callback at `http://127.0.0.1`.
+- The terminal CLI browser authorization page lets the logged-in user choose the workspace that will own the CLI API key.
 - On Unix-like systems, adapter configuration and credential files are written with owner-only file permissions. On Windows, privacy relies on the user-profile and parent-directory ACLs.
 - Before modifying an existing configuration, the CLI copies it to `~/.tokensmarket/backups/`.
 - The local key registry is stored at `~/.tokensmarket/keys.json`; it records metadata only and does not replace the tool configuration.
 - Re-running setup replaces the local managed record for that tool. Revoke the actual key from the Token Market dashboard if you no longer want it to remain active.
+
+Desktop login instead uses PKCE and a one-time registered application-protocol callback, without choosing a workspace or issuing a tool key during login. Private desktop session storage, per-field configuration receipts, exact-key cleanup and testing limits are described in [desktop management](docs/desktop-management.md).
 
 ## Architecture
 

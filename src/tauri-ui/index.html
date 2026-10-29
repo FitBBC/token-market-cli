@@ -3,120 +3,74 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Token Market Setup</title>
-<style>
-:root { color-scheme: light; --blue:#2563eb; --green:#059669; --red:#dc2626; --text:#0f172a; --muted:#64748b; --border:#dbe1ea; --bg:#f5f7fb; }
-* { box-sizing:border-box; }
-html,body { height:100%; }
-body { margin:0; display:grid; place-items:center; padding:24px; background:radial-gradient(circle at 12% 8%,rgba(37,99,235,.14),transparent 34%),radial-gradient(circle at 88% 12%,rgba(5,150,105,.12),transparent 32%),var(--bg); color:var(--text); font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
-.card { width:min(820px,100%); max-height:100%; overflow:auto; background:rgba(255,255,255,.94); border:1px solid var(--border); border-radius:18px; box-shadow:0 22px 70px rgba(15,23,42,.12); padding:26px; }
-h1 { margin:0 0 6px; font-size:23px; letter-spacing:-.02em; }
-.sub { margin:0 0 20px; color:var(--muted); }
-.tools { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
-@media (max-width:680px) { .tools { grid-template-columns:1fr; } }
-.tool { width:100%; text-align:left; border:1px solid var(--border); border-radius:12px; padding:14px; background:white; cursor:pointer; }
-.tool:disabled { cursor:not-allowed; color:var(--muted); background:#f8fafc; }
-.tool:not(:disabled):hover { border-color:#93c5fd; box-shadow:0 8px 20px rgba(37,99,235,.1); }
-.name { display:block; font-size:15px; font-weight:650; }
-.path { display:block; margin-top:4px; font-size:11px; color:var(--muted); word-break:break-all; }
-.state { display:inline-flex; margin-top:8px; font-size:11px; padding:3px 7px; border-radius:999px; }
-.state.ok { color:var(--green); background:#ecfdf5; }
-.state.no { color:var(--muted); background:#f1f5f9; }
-.status { margin-top:20px; border-top:1px solid var(--border); padding-top:18px; }
-.pending { color:var(--muted); }
-.error { color:var(--red); white-space:pre-wrap; }
-.success { color:var(--green); font-weight:650; }
-.result { margin:10px 0 0; padding:0; list-style:none; color:var(--muted); }
-.result li { margin-top:5px; }
-.result li.success { color:var(--green); font-weight:600; }
-.result li.failure { color:var(--red); font-weight:600; }
-a { color:var(--blue); }
-</style>
+<title>Token Market</title>
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="workspace.css">
+<link rel="stylesheet" href="tools.css">
 </head>
 <body>
-<main class="card">
-<h1>Token Market 一键配置</h1>
-<p class="sub">选择你正在使用的工具，浏览器会自动打开授权页面。授权完成后，这里会自动写入配置并测试。</p>
-<section id="tools" class="tools"></section>
-<section id="status" class="status"><p class="pending">正在检测本机已安装的 Agent…</p></section>
-</main>
-<script>
-const tools = [
-  { id: 'claude-code', name: 'Claude Code', executable: 'claude', configPath: '~/.claude/settings.json' },
-  { id: 'codex', name: 'Codex CLI', executable: 'codex', configPath: '~/.codex/config.toml' },
-  { id: 'workbuddy', name: 'WorkBuddy', executable: 'workbuddy', configPath: '~/.workbuddy/models.json' },
-  { id: 'deepseek-harness', name: 'DeepSeek Harness', executable: 'deepseek', configPath: '~/.dsh/profiles/desktop/cordis.patch.yml' },
-  { id: 'openclaw', name: 'OpenClaw', executable: 'openclaw', configPath: '~/.openclaw/openclaw.json' },
-  { id: 'opencode', name: 'OpenCode', executable: 'opencode', configPath: '~/.config/opencode/opencode.json' },
-];
-const toolsEl = document.getElementById('tools');
-const statusEl = document.getElementById('status');
-let statusPollTimer = null;
-for (const tool of tools) {
-  const button = document.createElement('button');
-  button.className = 'tool';
-  button.innerHTML = '<span class="name"></span><span class="path"></span><span class="state">检测中</span>';
-  button.querySelector('.name').textContent = tool.name;
-  button.querySelector('.path').textContent = tool.configPath;
-  window.__TAURI__.core.invoke('tool_status', { tool: tool.id }).then(status => {
-    const state = button.querySelector('.state');
-    state.textContent = status.installed ? '已安装' : '未检测到';
-    state.className = 'state ' + (status.installed ? 'ok' : 'no');
-    button.disabled = !status.installed;
-    button.querySelector('.path').textContent = status.configPath;
-  }).catch(error => {
-    const state = button.querySelector('.state');
-    state.textContent = '检测失败';
-    state.className = 'state no';
-    button.disabled = true;
-    statusEl.innerHTML = '<p class="error">检测失败：' + escapeHtml(String(error)) + '</p>';
-  });
-  button.onclick = () => start(tool.id, tool.name);
-  toolsEl.append(button);
-}
-async function start(tool, name) {
-  clearTimeout(statusPollTimer);
-  statusEl.innerHTML = '<p class="pending">正在启动 ' + escapeHtml(name) + ' 配置…</p>';
-  try {
-    renderStatus(await window.__TAURI__.core.invoke('start_setup', { tool }));
-  } catch (error) {
-    statusEl.innerHTML = '<p class="error">配置失败：' + escapeHtml(String(error)) + '</p>';
-  }
-}
-async function renderStatus(status) {
-  if (status.running) {
-    statusEl.innerHTML = '<p class="pending">配置进行中：请在打开的浏览器页面完成授权。完成后这里会自动继续。</p>';
-    statusPollTimer = setTimeout(async () => renderStatus(await window.__TAURI__.core.invoke('setup_status', {})), 1000);
-    return;
-  }
-  if (status.error) {
-    statusEl.innerHTML = '<p class="error">配置失败：' + escapeHtml(status.error) + '</p>';
-    return;
-  }
-  if (status.outcome) {
-    const o = status.outcome;
-    statusEl.innerHTML = '<p class="success">已配置 ' + escapeHtml(o.toolName) + '</p><p>API Key：' + escapeHtml(o.apiKeyName) + ' (' + escapeHtml(o.apiKeyId) + ')<br>模型：' + escapeHtml(o.model) + '<br>配置文件：' + escapeHtml(o.configPath) + '</p><ul class="result">' + o.tests.map(t => '<li class="' + (t.passed ? 'success' : 'failure') + '">' + (t.passed ? '✓' : '✗') + ' ' + escapeHtml(verificationName(t.name)) + (t.detail ? ' — ' + escapeHtml(verificationDetail(t.detail)) : '') + '</li>').join('') + '</ul>' + (o.requiresRestart ? '<p>请重启 ' + escapeHtml(o.toolName) + ' 后使用。</p>' : '');
-    return;
-  }
-  statusPollTimer = setTimeout(async () => renderStatus(await window.__TAURI__.core.invoke('setup_status', {})), 1000);
-}
-function verificationName(name) {
-  const names = {
-    'Model list': '模型列表',
-    'Chat request': '聊天请求',
-    'Streaming chat': '流式聊天',
-    'Tool call': '工具调用',
-  };
-  return names[name] || name;
-}
-function verificationDetail(detail) {
-  const details = {
-    'HTTP 402 Payment Required': '请求失败：HTTP 402（余额不足，或当前 Key 无权限访问该能力）',
-    'response was not a valid SSE stream': '响应不是有效的流式数据',
-  };
-  return details[detail] || detail;
-}
-function escapeHtml(value) { return String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'","&#39;"); }
-</script>
+<section id="login" class="login-page" aria-labelledby="title">
+  <div class="login-content">
+    <img class="login-logo" src="assets/token-market.png" alt="Token Market">
+    <h1 id="title">连接你的 Agent</h1>
+    <p id="intro">使用 Token Market 账号登录，<br>在一个地方管理本机工具。</p>
+    <button id="begin" class="primary">使用浏览器登录</button>
+    <div id="waiting" class="login-waiting" hidden>
+      <span class="spinner" aria-hidden="true"></span>
+      <h2>请在浏览器中完成登录</h2>
+      <p role="status">授权完成后，会自动返回应用。</p>
+      <button id="reopen">重新打开登录页</button>
+      <button id="copy">复制登录链接</button>
+      <button id="cancel" class="quiet">取消等待</button>
+    </div>
+    <div id="feedback" role="status" aria-live="polite"></div>
+  </div>
+</section>
+<section id="signed-in" class="desktop-shell" hidden>
+  <aside class="sidebar">
+    <div class="brand"><img src="assets/token-market.png" alt="">Token Market</div>
+    <nav class="primary-nav" aria-label="主导航">
+      <button data-page="tools" class="active"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>我的 Agent</button>
+      <button data-page="account"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7V5a2 2 0 0 1 2-2h13v4M4 7h15a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z"/><path d="M16 11h5v6h-5a2 2 0 0 1 0-6Z"/></svg>账号与空间</button>
+      <button data-page="help"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 0 1 6 0c0 2-3 2-3 4m0 3v1"/></svg>使用帮助</button>
+    </nav>
+    <div class="sidebar-note"><strong>连接你的 Agent</strong><p>在熟悉的工具里，<br>继续你的工作。</p></div>
+    <div id="sidebar-profile"></div>
+  </aside>
+  <main id="app-content" class="app-content">
+    <header class="app-topbar"><span id="breadcrumb">工作台 / 我的 Agent</span><span>本机工具管理</span></header>
+    <div id="session-feedback" class="notice" role="status" hidden></div>
+    <section id="tools-page" data-view="tools">
+      <header class="page-heading"><div><h1>你的 Agent</h1><p>连接本机工具，在熟悉的地方开始工作。</p></div><button id="detect-tools">重新检测</button></header>
+      <div id="workspace-region"></div>
+      <section id="tools-region" aria-label="本机 Agent 工具" hidden></section>
+      <footer class="page-note">切换当前空间不会改变已有连接的计费空间。<button class="quiet" data-page="help">了解接入流程</button></footer>
+    </section>
+    <section id="account-page" data-view="account" hidden>
+      <header class="page-heading"><div><h1>账号与空间</h1><p>管理当前身份、空间和可用余额。</p></div></header>
+      <div id="workspace-account-region"></div>
+    </section>
+    <section id="tool-detail-page" data-view="detail" hidden><div id="tool-detail-region"></div></section>
+    <section id="help-page" data-view="help" hidden>
+      <header class="page-heading"><div><h1>使用帮助</h1><p>从接入到开始工作，只需要几步。</p></div></header>
+      <div class="page-grid">
+        <section class="sheet"><h2>开始使用</h2><ol class="steps"><li><h3>安装你常用的工具</h3><p>安装完成后，返回首页点击“重新检测”。</p></li><li><h3>确认空间，然后接入</h3><p>接入会配置模型，当前空间用于这次新连接的计费归属。</p></li><li><h3>重新打开工具</h3><p>已有会话请先退出，让工具读取新的模型配置。</p></li><li><h3>需要时，测试一次</h3><p>连接详情中可发起文本测试，确认费用后才发送请求。</p></li></ol></section>
+        <section class="sheet"><h2>常见问题</h2>
+          <details class="faq" open><summary>接入后为什么显示“未测试”？</summary><p>接入只配置工具，不会自动发送模型请求。测试由你单独发起，可能产生费用。</p></details>
+          <details class="faq"><summary>切换空间会影响已有工具吗？</summary><p>已有工具保持自己的计费空间。需要更换归属时，在连接详情中重新接入并确认目标空间。</p></details>
+          <details class="faq"><summary>退出登录会删除工具配置吗？</summary><p>不会。退出桌面账号不会重写已有 Agent 配置。</p></details>
+          <details class="faq"><summary>文本测试通过代表什么？</summary><p>表示一次完整文本输出成功。流式输出、工具调用和 Agent 运行表现需要在实际工具中确认。</p></details>
+          <details class="faq"><summary>配置变化后为什么不能测试？</summary><p>配置可能与接入记录不一致。请检查配置或重新接入，以确保测试使用正确的连接。</p></details>
+        </section>
+      </div>
+    </section>
+  </main>
+  <button id="change-account" hidden>切换账号</button><button id="logout" hidden>退出登录</button>
+</section>
+<script src="shell.js"></script>
+<script src="workspace.js"></script>
+<script src="tools.js"></script>
+<script src="connection-test.js"></script>
+<script src="app.js"></script>
 </body>
 </html>

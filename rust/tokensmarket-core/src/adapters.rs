@@ -7,10 +7,25 @@ use std::{
 };
 
 use crate::config::{
-    command_exists, create_backup, home_dir, read_json_if_exists, write_private_file,
-    write_private_json,
+    create_backup, home_dir, read_json_if_exists, write_private_file, write_private_json,
 };
 use crate::models::{resolve_model_capabilities, ToolConfig};
+
+/// Keep desktop connections and terminal setup aligned on every Claude model selector.
+pub(crate) fn claude_model_environment(model: &str) -> [(&'static str, &str); 10] {
+    [
+        ("ANTHROPIC_MODEL", model),
+        ("ANTHROPIC_DEFAULT_FABLE_MODEL", model),
+        ("ANTHROPIC_DEFAULT_FABLE_MODEL_NAME", model),
+        ("ANTHROPIC_DEFAULT_HAIKU_MODEL", model),
+        ("ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME", model),
+        ("ANTHROPIC_DEFAULT_OPUS_MODEL", model),
+        ("ANTHROPIC_DEFAULT_OPUS_MODEL_NAME", model),
+        ("ANTHROPIC_DEFAULT_SONNET_MODEL", model),
+        ("ANTHROPIC_DEFAULT_SONNET_MODEL_NAME", model),
+        ("CLAUDE_CODE_AUTO_MODE_SERVER", "0"),
+    ]
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -76,7 +91,6 @@ pub struct Adapter {
     pub id: ToolId,
     pub name: &'static str,
     pub protocol: Protocol,
-    executable: &'static str,
     pub requires_restart: bool,
     path_kind: PathKind,
 }
@@ -130,22 +144,7 @@ impl Adapter {
     }
 
     pub fn is_installed(&self) -> bool {
-        match self.id {
-            ToolId::WorkBuddy => [
-                PathBuf::from("/Applications/WorkBuddy.app"),
-                home_dir().join("Applications/WorkBuddy.app"),
-            ]
-            .iter()
-            .any(|path| path.exists()),
-            ToolId::DeepSeekHarness => [
-                PathBuf::from("/Applications/DeepSeek Harness.app"),
-                home_dir().join("Applications/DeepSeek Harness.app"),
-                dsh_home(),
-            ]
-            .iter()
-            .any(|path| path.exists()),
-            _ => command_exists(self.executable),
-        }
+        crate::inventory::ToolInventory::current().is_installed(self.id)
     }
 
     pub fn read_config(&self) -> Result<Option<ToolConfig>> {
@@ -335,9 +334,9 @@ impl Adapter {
                 current["model"] = json!(config.model);
                 current["env"]["ANTHROPIC_BASE_URL"] = json!(config.base_url);
                 current["env"]["ANTHROPIC_API_KEY"] = json!(config.api_key);
-                current["env"]["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = json!(config.model);
-                current["env"]["ANTHROPIC_DEFAULT_OPUS_MODEL"] = json!(config.model);
-                current["env"]["ANTHROPIC_DEFAULT_SONNET_MODEL"] = json!(config.model);
+                for (name, value) in claude_model_environment(&config.model) {
+                    current["env"][name] = json!(value);
+                }
                 current["env"]["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] =
                     json!(config.context_window_tokens.unwrap_or(200_000).to_string());
                 write_private_json(&config_path, &current)?;
@@ -521,7 +520,6 @@ pub fn adapters() -> Vec<Adapter> {
             id: ToolId::ClaudeCode,
             name: "Claude Code",
             protocol: Protocol::AnthropicCompatible,
-            executable: "claude",
             requires_restart: false,
             path_kind: PathKind::ClaudeSettings,
         },
@@ -529,7 +527,6 @@ pub fn adapters() -> Vec<Adapter> {
             id: ToolId::Codex,
             name: "Codex CLI",
             protocol: Protocol::OpenAiCompatible,
-            executable: "codex",
             requires_restart: true,
             path_kind: PathKind::CodexConfig,
         },
@@ -537,7 +534,6 @@ pub fn adapters() -> Vec<Adapter> {
             id: ToolId::WorkBuddy,
             name: "WorkBuddy",
             protocol: Protocol::OpenAiCompatible,
-            executable: "workbuddy",
             requires_restart: false,
             path_kind: PathKind::WorkBuddy,
         },
@@ -545,7 +541,6 @@ pub fn adapters() -> Vec<Adapter> {
             id: ToolId::DeepSeekHarness,
             name: "DeepSeek Harness",
             protocol: Protocol::OpenAiCompatible,
-            executable: "deepseek",
             requires_restart: true,
             path_kind: PathKind::DeepSeekHarness {
                 fallback_root: false,
@@ -555,7 +550,6 @@ pub fn adapters() -> Vec<Adapter> {
             id: ToolId::OpenClaw,
             name: "OpenClaw",
             protocol: Protocol::OpenAiCompatible,
-            executable: "openclaw",
             requires_restart: false,
             path_kind: PathKind::OpenClaw,
         },
@@ -563,7 +557,6 @@ pub fn adapters() -> Vec<Adapter> {
             id: ToolId::OpenCode,
             name: "OpenCode",
             protocol: Protocol::OpenAiCompatible,
-            executable: "opencode",
             requires_restart: false,
             path_kind: PathKind::OpenCode,
         },

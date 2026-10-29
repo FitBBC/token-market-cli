@@ -56,7 +56,7 @@ jobs:
         with:
           projectPath: src-tauri
           tagName: ${{ github.ref_name }}
-          releaseName: "Token Market Setup ${{ github.ref_name }}"
+          releaseName: "Token Market ${{ github.ref_name }}"
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

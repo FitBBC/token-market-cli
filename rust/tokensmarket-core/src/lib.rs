@@ -9,3 +9,10 @@ pub use adapters::{
     adapters, get_adapter, tool_id, Adapter, AdapterContext, AdapterWriteResult, Protocol, ToolId,
 };
 pub use setup::{run_setup, SetupOutcome, SetupProgress};
+
+pub mod desktop;
+
+pub mod desktop_workspace;
+pub mod inventory;
+
+pub mod connections;

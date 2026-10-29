@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Token Market Setup",
+  "productName": "Token Market",
   "version": "0.1.0",
   "identifier": "cn.tokensmarket.setup",
   "build": {
@@ -9,7 +9,7 @@
   "app": {
     "windows": [
       {
-        "title": "Token Market Setup",
+        "title": "Token Market",
         "width": 900,
         "height": 760,
         "resizable": true,
@@ -17,7 +17,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost; img-src 'self' data:"
     },
     "withGlobalTauri": true
   },
@@ -38,6 +38,15 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "tokenmarket"
+        ]
+      }
     }
   }
 }

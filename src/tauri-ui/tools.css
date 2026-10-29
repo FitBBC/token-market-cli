@@ -1,0 +1,86 @@
+#tools-region { text-align: left; }
+.tools-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 12px; }
+.tools-filters { display: flex; gap: 3px; }
+.tools-filters button { border: 0; background: transparent; color: var(--muted); padding: 8px 12px; white-space: nowrap; }
+.tools-filters button.selected { color: #245ecc; background: var(--primary-soft); }
+.tools-search { max-width: 230px; min-width: 160px; width: 35%; background: var(--surface); }
+.tools-feedback { min-height: 20px; margin: 0 0 14px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.tools-feedback.error { color: var(--error); }
+.tools-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.tool-row { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); min-width: 0; }
+.tool-card-top { display: flex; align-items: center; gap: 12px; padding: 14px 18px 8px; }
+.tool-icon { width: 42px; height: 42px; flex-shrink: 0; display: grid; place-items: center; border: 1px solid #edf0f4; border-radius: 10px; background: #f4f6f9; }
+.tool-icon img { width: 30px; height: 30px; object-fit: contain; }
+.tool-title { min-width: 0; }
+.tool-title h3 { font-size: 16px; margin: 0 0 3px; letter-spacing: -.3px; overflow-wrap: anywhere; }
+.tool-state { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.tool-state::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #8795ab; flex-shrink: 0; }
+.tool-state.test_passed { color: var(--success); }
+.tool-state.test_passed::before { background: var(--success); }
+.tool-state.test_failed { color: var(--error); }
+.tool-state.test_failed::before { background: var(--error); }
+.tool-state.configuration_changed, .tool-state.legacy { color: var(--warning); }
+.tool-state.configuration_changed::before, .tool-state.legacy::before { background: #9c671f; }
+.tool-state.configured_untested { color: #4268a8; }
+.tool-details { flex: 1; padding: 0 18px 10px; }
+.tool-description, .tool-model-summary { font-size: 12px; margin: 4px 0; overflow-wrap: anywhere; }
+.tool-model-summary { color: #45546a; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.tool-card-footer { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 3px 9px; border-top: 1px solid var(--line); background: #fcfdff; border-radius: 0 0 12px 12px; }
+.tool-card-footer button { padding: 8px 12px; }
+.tool-card-footer .primary { background: #edf3ff; color: #245fcf; border-color: #e2ebff; }
+.tool-card-footer .primary:hover { background: #dfeaff; }
+.tool-card-footer .primary:disabled { color: #53627a; background: #edf0f5; border-color: #d9e0ea; }
+.tool-actions { display: flex; align-items: center; gap: 8px; }
+.tools-empty { grid-column: 1 / -1; padding: 40px 24px; text-align: center; border: 1px dashed #cbd7e7; background: var(--surface); border-radius: 12px; }
+.tools-empty h2 { font-size: 20px; margin-bottom: 8px; }
+.tools-empty p { margin-bottom: 20px; }
+.tool-detail-title { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.tool-detail-title .tool-icon { width: 56px; height: 56px; }
+.tool-detail-title .tool-icon img { width: 37px; height: 37px; }
+.tool-detail-title h1 { font-size: 27px; overflow-wrap: anywhere; }
+#tool-detail-region > .tool-actions { margin: 20px 0 24px; flex-wrap: wrap; }
+.tool-detail-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(240px, 1fr); gap: 18px; }
+.tool-detail-grid > .sheet { align-self: start; }
+.tool-detail-grid > div { min-width: 0; }
+.tool-model-entry { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.tool-model-entry:last-child { border: 0; }
+.tool-model-entry code { font-size: 15px; color: #374c69; }
+.tool-model-tag { font-size: 12px; padding: 3px 7px; border-radius: 5px; color: #476281; background: #eef3fa; white-space: nowrap; }
+.tool-menu { margin-left: auto; position: relative; }
+.tool-menu summary { min-width: 44px; min-height: 44px; padding: 10px 16px; list-style: none; cursor: pointer; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
+.tool-menu-options { position: absolute; z-index: 6; right: 0; top: calc(100% + 6px); padding: 6px; min-width: 180px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 10px 30px #27354b14; }
+.tool-menu-options button { display: block; width: 100%; border: 0; text-align: left; }
+.disconnect-conflicts label { display: grid; gap: 8px; margin: 14px 0; }
+.tool-result-detail { white-space: pre-line; overflow-wrap: anywhere; }
+.connection-test-dialog .test-context { padding: 14px; border: 1px solid var(--line); border-radius: 9px; background: #f8fafd; overflow-wrap: anywhere; }
+.connection-test-dialog .test-model-label { margin: 18px 0; }
+.connection-test-dialog .test-feedback { min-height: 28px; margin-top: 18px; }
+.connection-test-dialog .test-feedback.success { color: var(--success); }
+.connection-test-dialog .test-feedback.error { color: var(--error); }
+@media (max-width: 1100px) {
+  .tools-filters button { padding: 8px; font-size: 13px; }
+  .tools-search { min-width: 145px; }
+  .tool-card-top { padding-left: 14px; padding-right: 12px; gap: 10px; }
+  .tool-title h3 { font-size: 15px; }
+  .tool-details { padding-left: 14px; padding-right: 14px; }
+  .tool-card-footer { padding-left: 6px; padding-right: 6px; }
+  .tool-card-footer button { padding: 8px; font-size: 13px; }
+  .tool-detail-grid { grid-template-columns: minmax(0, 1.4fr) minmax(210px, 1fr); }
+}
+@media (max-width: 700px) {
+  .tools-controls { flex-wrap: wrap; }
+  .tools-filters { width: 100%; }
+  .tools-filters button { padding: 8px 12px; font-size: 14px; }
+  .tools-search { width: 100%; max-width: none; }
+  .tools-list { grid-template-columns: 1fr; }
+  .tool-card-top { padding: 18px 18px 12px; }
+  .tool-title h3 { font-size: 18px; }
+  .tool-details { padding: 0 18px 14px; }
+  .tool-card-footer { padding: 7px 10px; }
+  .tool-card-footer button { font-size: 14px; padding: 8px 14px; }
+  .tool-detail-title h1 { font-size: 24px; }
+  .tool-detail-title .tool-icon { width: 48px; height: 48px; }
+  .tool-detail-heading { flex-wrap: wrap; }
+}
+
+@media (max-width: 800px) { .tool-detail-grid { grid-template-columns: 1fr; } }
