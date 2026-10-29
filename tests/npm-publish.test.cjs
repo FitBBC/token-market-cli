@@ -32,7 +32,7 @@ function fixture(run) {
   const execute = (options = {}) => {
     const result = spawnSync(process.execPath, [publisher, dir, ...(options.dryRun ? ['--dry-run'] : [])], {
       encoding: 'utf8', env: {
-        ...process.env, npm_execpath: fakeNpm, RELEASE_TAG: options.tag ?? `v${pkg.version}`,
+        ...process.env, npm_execpath: fakeNpm, RELEASE_TAG: options.tag ?? `cli-v${pkg.version}`,
         TOKEN_MARKET_PUBLISH_LOG: log,
         TOKEN_MARKET_PUBLISH_EXISTING: JSON.stringify(options.existing ?? {}),
         TOKEN_MARKET_PUBLISH_FAIL: options.fail ?? '',
@@ -46,7 +46,7 @@ function fixture(run) {
 
 test('an incomplete release or mismatched tag causes no registry writes', () => {
   fixture(({ dir, execute }) => {
-    const mismatch = execute({ tag: 'v99.0.0' });
+    const mismatch = execute({ tag: `v${pkg.version}` });
     assert.equal(mismatch.status, 1);
     assert.equal(mismatch.calls.length, 0);
     fs.unlinkSync(path.join(dir, `${pkg.name}-${pkg.version}.tgz`));

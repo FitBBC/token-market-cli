@@ -29,9 +29,9 @@ npm run test:package -- dist
 
 ## CI 和正式发布
 
-`.github/workflows/cli-npm.yml` 在相关 PR、main 提交和 `v*` tag 上构建五个平台。每个平台运行启动器测试、Rust CLI 测试及真实 tarball 安装验证。全部成功后，汇总六个 tarball 到 `npm-release` artifact。
+`.github/workflows/cli-npm.yml` 在相关 PR、main 提交和 `cli-v*` tag 上构建五个平台。每个平台运行启动器测试、Rust CLI 测试及真实 tarball 安装验证。全部成功后，汇总六个 tarball 到 `npm-release` artifact。
 
-普通提交和默认的手动运行只构建、验证。`v*` tag 或手动勾选 `publish` 才会正式发布。桌面端原有的 `.github/workflows/release.yml` 独立运行。
+普通提交和默认的手动运行只构建、验证。`cli-v*` tag 或手动勾选 `publish` 才会正式发布。桌面端原有的 `.github/workflows/release.yml` 使用 `v*` tag，双方独立运行。
 
 首次发布前：
 
@@ -40,7 +40,7 @@ npm run test:package -- dist
 3. 手动运行 **CLI npm packages**，保持 `publish=false`，先检查所有平台通过。
 4. 核对待发布版本，再使用版本 tag 或手动 `publish=true` 发布。
 
-`package.json` 的版本、其中五个平台依赖的固定版本，以及 `rust/tokensmarket-cli/Cargo.toml` 的版本必须一致。使用 tag 时还要求 tag 为 `v<version>`。CLI 和 App 的版本可以独立演进。
+`package.json` 的版本、其中五个平台依赖的固定版本，以及 `rust/tokensmarket-cli/Cargo.toml` 的版本必须一致。使用 tag 时还要求 tag 为 `cli-v<version>`，例如 `cli-v0.1.0`。CLI 和 App 的版本可以独立演进。
 
 发布脚本先检查全部 tarball，并对全部包执行发布预演，再依次发布五个平台包，最后发布主启动器，避免用户安装到缺少平台二进制的入口。失败后可以使用相同的 `npm-release` artifact 重试：已发布包的 integrity 完全一致才会跳过；如果同版本内容不同，脚本会停止，需要使用新版本。
 

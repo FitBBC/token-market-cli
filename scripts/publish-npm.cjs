@@ -12,8 +12,8 @@ try {
   if (!directory || (flag && flag !== '--dry-run') || !process.env.npm_execpath) {
     throw new Error('Usage: npm run publish:cli -- <tarball-directory> [--dry-run]');
   }
-  if (process.env.RELEASE_TAG && process.env.RELEASE_TAG !== `v${pkg.version}`) {
-    throw new Error(`Release tag must equal v${pkg.version}. Update npm and Rust CLI versions together.`);
+  if (process.env.RELEASE_TAG && process.env.RELEASE_TAG !== `cli-v${pkg.version}`) {
+    throw new Error(`Release tag must equal cli-v${pkg.version}. Update npm and Rust CLI versions together.`);
   }
   // Validate the whole artifact set before any irreversible registry writes.
   const files = [...Object.keys(platforms).map(key => `tokenmarket-${key}`), pkg.name]
