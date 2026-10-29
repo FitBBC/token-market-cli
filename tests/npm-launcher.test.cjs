@@ -8,6 +8,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { resolveBinary } = require('../npm/bin/tokenmarket.cjs');
 const { packagePlatform } = require('../scripts/package-cli.cjs');
+const { checkBinaries } = require('../scripts/check-npm-binaries.cjs');
 const platforms = require('../npm/platforms.cjs');
 const pkg = require('../package.json');
 
@@ -19,21 +20,19 @@ before(() => {
   fs.writeFileSync(path.join(temporary, 'package.json'), JSON.stringify(pkg));
   // A real native executable exercises argv, stdio, cwd, env and exit handling
   // on every OS without touching Agent configurations or authorization.
-  packagePlatform(`${process.platform}-${process.arch}`, process.execPath, path.join(temporary, 'node_modules'));
+  packagePlatform(`${process.platform}-${process.arch}`, process.execPath, path.join(temporary, 'npm/native'));
   launcher = path.join(temporary, 'npm/bin/tokenmarket.cjs');
 });
 after(() => fs.rmSync(temporary, { recursive: true, force: true }));
 
-test('all platform dependencies are pinned to the launcher version', () => {
-  assert.deepEqual(pkg.optionalDependencies,
-    Object.fromEntries(Object.keys(platforms).map(key => [`tokenmarket-${key}`, pkg.version])));
+test('the single npm package includes native binaries without install-time dependencies', () => {
+  assert.ok(pkg.files.includes('npm/native/'));
+  assert.equal(pkg.optionalDependencies, undefined);
 });
 
-test('unsupported systems and missing optional packages give actionable errors', () => {
+test('unsupported systems and missing bundled binaries give actionable errors', () => {
   assert.throws(() => resolveBinary('freebsd', 'x64'), /Unsupported platform/);
-  assert.throws(() => resolveBinary('darwin', 'arm64', () => {
-    throw Object.assign(new Error('missing'), { code: 'MODULE_NOT_FOUND' });
-  }), /--include=optional/);
+  assert.throws(() => resolveBinary('darwin', 'arm64', path.join(temporary, 'missing')), /Missing bundled CLI/);
 });
 
 test('the launcher preserves arguments, working directory, environment and stdout/stderr', () => {
@@ -69,20 +68,26 @@ test('the launcher preserves native termination signals', { skip: process.platfo
   assert.equal(result.signal, 'SIGTERM');
 });
 
-test('platform packaging sets npm OS/CPU restrictions and executable permissions', () => {
+test('bundle assembly verifies every platform checksum and restores executable permissions', () => {
+  const output = path.join(temporary, 'metadata');
   for (const [key, entry] of Object.entries(platforms)) {
-    const dir = packagePlatform(key, __filename, path.join(temporary, 'metadata'));
-    const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
-    assert.deepEqual(manifest.os, [key.split('-')[0]]);
-    assert.deepEqual(manifest.cpu, [key.split('-')[1]]);
+    const dir = packagePlatform(key, __filename, output);
+    const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8'));
+    assert.equal(manifest.target, entry.target);
     assert.equal(manifest.version, pkg.version);
     assert.ok(fs.existsSync(path.join(dir, 'bin', entry.binary)));
-    if (process.platform !== 'win32') assert.equal(fs.statSync(path.join(dir, 'bin', entry.binary)).mode & 0o777, 0o755);
+    fs.chmodSync(path.join(dir, 'bin', entry.binary), 0o644);
   }
+  checkBinaries(output);
+  if (process.platform !== 'win32') {
+    assert.equal(fs.statSync(path.join(output, 'darwin-arm64/bin/tokenmarket')).mode & 0o777, 0o755);
+  }
+  fs.appendFileSync(path.join(output, 'darwin-arm64/bin/tokenmarket'), 'corrupt');
+  assert.throws(() => checkBinaries(output), /checksum mismatch/);
 });
 
 test('mismatched platform versions fail before executing the binary', () => {
-  const manifest = path.join(temporary, 'node_modules', `tokenmarket-${process.platform}-${process.arch}`, 'package.json');
+  const manifest = path.join(temporary, 'npm/native', `${process.platform}-${process.arch}`, 'manifest.json');
   const original = fs.readFileSync(manifest, 'utf8');
   try {
     fs.writeFileSync(manifest, JSON.stringify({ version: '0.0.0' }));

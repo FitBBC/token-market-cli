@@ -2,10 +2,12 @@
 'use strict';
 
 const { spawnSync } = require('node:child_process');
+const fs = require('node:fs');
+const path = require('node:path');
 const platforms = require('../platforms.cjs');
 const { version } = require('../../package.json');
 
-function resolveBinary(platform = process.platform, arch = process.arch, resolve = require.resolve) {
+function resolveBinary(platform = process.platform, arch = process.arch, root = path.resolve(__dirname, '../..')) {
   const key = `${platform}-${arch}`;
   const entry = platforms[key];
   if (!entry) {
@@ -14,22 +16,17 @@ function resolveBinary(platform = process.platform, arch = process.arch, resolve
   if (platform === 'linux' && !process.report.getReport().header.glibcVersionRuntime) {
     throw new Error('The prebuilt Linux CLI requires glibc. On Alpine/musl, build rust/tokensmarket-cli from source.');
   }
-  const name = `tokenmarket-${key}`;
-  let manifest;
-  try {
-    manifest = resolve(`${name}/package.json`);
-  } catch (error) {
-    if (error.code !== 'MODULE_NOT_FOUND') throw error;
-    throw new Error(
-      `Missing ${name}@${version}. Install with optional dependencies enabled: ` +
-      '`npm install -g --include=optional tokenmarket`. For npx, retry with a fresh npm cache and --include=optional.',
-    );
+  const directory = path.join(root, 'npm', 'native', key);
+  const manifest = path.join(directory, 'manifest.json');
+  const binary = path.join(directory, 'bin', entry.binary);
+  if (!fs.existsSync(manifest) || !fs.existsSync(binary)) {
+    throw new Error(`Missing bundled CLI for ${key}. Reinstall tokenmarket@${version}.`);
   }
   const installed = require(manifest);
   if (installed.version !== version) {
-    throw new Error(`Expected ${name}@${version}, found ${installed.version}. Reinstall tokenmarket.`);
+    throw new Error(`Expected native CLI ${version}, found ${installed.version}. Reinstall tokenmarket.`);
   }
-  return require('node:path').join(require('node:path').dirname(manifest), 'bin', entry.binary);
+  return binary;
 }
 
 function main() {

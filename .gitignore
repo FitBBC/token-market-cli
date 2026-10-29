@@ -5,4 +5,5 @@ coverage/
 .env
 .DS_Store
 target/
+npm/native/
 src-tauri/gen/schemas/

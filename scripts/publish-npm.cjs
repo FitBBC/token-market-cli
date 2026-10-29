@@ -16,10 +16,21 @@ try {
     throw new Error(`Release tag must equal cli-v${pkg.version}. Update npm and Rust CLI versions together.`);
   }
   // Validate the whole artifact set before any irreversible registry writes.
-  const files = [...Object.keys(platforms).map(key => `tokenmarket-${key}`), pkg.name]
-    .map(name => path.resolve(directory, `${name}-${pkg.version}.tgz`));
+  const files = [path.resolve(directory, `${pkg.name}-${pkg.version}.tgz`)];
   for (const file of files) {
     if (!fs.statSync(file).isFile()) throw new Error(`Missing release tarball: ${file}`);
+    const inspection = spawnSync(process.execPath, [process.env.npm_execpath,
+      'pack', file, '--dry-run', '--json', '--ignore-scripts'], { encoding: 'utf8' });
+    if (inspection.error) throw inspection.error;
+    if (inspection.status !== 0) throw new Error(`Cannot inspect release tarball: ${inspection.stderr}`);
+    const [packed] = JSON.parse(inspection.stdout);
+    if (packed.name !== pkg.name || packed.version !== pkg.version) throw new Error('Wrong package name or version in release tarball.');
+    const paths = new Set(packed.files.map(entry => entry.path));
+    for (const [key, entry] of Object.entries(platforms)) {
+      for (const required of [`npm/native/${key}/bin/${entry.binary}`, `npm/native/${key}/manifest.json`]) {
+        if (!paths.has(required)) throw new Error(`Incomplete release tarball: missing ${required}`);
+      }
+    }
   }
   // Check every tarball before writing any package to the registry.
   const publish = (file, dryRun) => {

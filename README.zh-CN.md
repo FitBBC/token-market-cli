@@ -145,12 +145,12 @@ xattr -cr "/Applications/Token Market.app"
 
 然后重新打开应用。
 
-### npm 提示缺少当前平台包
+### npm 提示缺少内置二进制
 
-安装时需要启用 optional dependencies，重新安装：
+一个 npm 包内置五个平台的二进制。若安装不完整，请重新安装：
 
 ```bash
-npm install -g --include=optional tokenmarket
+npm install -g tokenmarket
 ```
 
 ### 找不到已安装的工具

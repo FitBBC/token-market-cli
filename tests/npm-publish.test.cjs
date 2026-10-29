@@ -10,17 +10,23 @@ const { createHash } = require('node:crypto');
 const pkg = require('../package.json');
 const platforms = require('../npm/platforms.cjs');
 const publisher = path.resolve(__dirname, '../scripts/publish-npm.cjs');
-const names = [...Object.keys(platforms).map(key => `tokenmarket-${key}`), pkg.name];
+const names = [pkg.name];
 
 function fixture(run) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tokenmarket-publish-'));
   const log = path.join(dir, 'calls.jsonl');
   const fakeNpm = path.join(dir, 'npm.cjs');
+  const packedFiles = Object.entries(platforms).flatMap(([key, entry]) => [
+    { path: `npm/native/${key}/bin/${entry.binary}` }, { path: `npm/native/${key}/manifest.json` },
+  ]);
   fs.writeFileSync(fakeNpm, `
     const fs = require('node:fs');
     const args = process.argv.slice(2);
     fs.appendFileSync(process.env.TOKEN_MARKET_PUBLISH_LOG, JSON.stringify(args)+'\\n');
-    if (args[0] === 'view') {
+    if (args[0] === 'pack') {
+      console.log(JSON.stringify([{name:${JSON.stringify(pkg.name)},version:${JSON.stringify(pkg.version)},
+        files: ${JSON.stringify(packedFiles)}.filter(entry=>entry.path!==process.env.TOKEN_MARKET_PUBLISH_MISSING)}]));
+    } else if (args[0] === 'view') {
       const existing = JSON.parse(process.env.TOKEN_MARKET_PUBLISH_EXISTING || '{}');
       if (existing[args[1]]) console.log(JSON.stringify(existing[args[1]]));
       else { console.log(JSON.stringify({error:{code:'E404'}})); process.exitCode=1; }
@@ -36,6 +42,7 @@ function fixture(run) {
         TOKEN_MARKET_PUBLISH_LOG: log,
         TOKEN_MARKET_PUBLISH_EXISTING: JSON.stringify(options.existing ?? {}),
         TOKEN_MARKET_PUBLISH_FAIL: options.fail ?? '',
+        TOKEN_MARKET_PUBLISH_MISSING: options.missing ?? '',
       },
     });
     const calls = fs.existsSync(log) ? fs.readFileSync(log, 'utf8').trim().split('\n').map(JSON.parse) : [];
@@ -64,7 +71,7 @@ test('all tarballs must pass the publication preflight before the first write', 
   });
 });
 
-test('dry runs never publish and successful releases publish the launcher last', () => {
+test('dry runs never publish and successful releases publish exactly one complete package', () => {
   fixture(({ execute }) => {
     const dryRun = execute({ dryRun: true });
     assert.equal(dryRun.status, 0, dryRun.stderr);
@@ -72,6 +79,15 @@ test('dry runs never publish and successful releases publish the launcher last',
     const result = execute();
     assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.writes.map(args => path.basename(args[1])), names.map(name => `${name}-${pkg.version}.tgz`));
+  });
+});
+
+test('a release missing a bundled platform is rejected before publication', () => {
+  fixture(({ execute }) => {
+    const result = execute({ missing: 'npm/native/win32-x64/bin/tokenmarket.exe' });
+    assert.equal(result.status, 1);
+    assert.equal(result.writes.length, 0);
+    assert.match(result.stderr, /Incomplete release tarball/);
   });
 });
 

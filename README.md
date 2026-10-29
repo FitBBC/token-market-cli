@@ -145,12 +145,12 @@ xattr -cr "/Applications/Token Market.app"
 
 Then open the app again.
 
-### npm reports a missing platform package
+### npm reports a missing bundled binary
 
-Installation requires optional dependencies. Reinstall with them enabled:
+The npm package bundles all five platform binaries. If an installation is incomplete, reinstall:
 
 ```bash
-npm install -g --include=optional tokenmarket
+npm install -g tokenmarket
 ```
 
 ### An installed tool is not detected

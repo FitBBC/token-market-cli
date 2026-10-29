@@ -1,7 +1,7 @@
 'use strict';
 
-// Serve the actual release tarballs through a temporary local npm registry.
-// This exercises npx's optional-dependency selection without publishing a package.
+// Serve the actual release tarball through a temporary local npm registry.
+// This exercises a fresh npx installation without publishing a package.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -10,13 +10,12 @@ const { createHash } = require('node:crypto');
 const { spawn } = require('node:child_process');
 const assert = require('node:assert/strict');
 const pkg = require('../package.json');
-const root = path.resolve(__dirname, '..');
 const platforms = require('../npm/platforms.cjs');
 
 async function main() {
-  const platformTarball = process.argv[2];
+  const input = process.argv[2];
   const npmCli = process.env.npm_execpath;
-  if (!platformTarball || !npmCli) throw new Error('Usage: npm run test:package -- <platform.tgz>');
+  if (!input || !npmCli) throw new Error('Usage: npm run test:package -- <tokenmarket.tgz or directory>');
   const key = `${process.platform}-${process.arch}`;
   if (!platforms[key]) throw new Error(`Unsupported smoke-test host: ${key}`);
   const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'tokenmarket-npx-'));
@@ -46,35 +45,24 @@ async function main() {
   });
   let registry;
   try {
-    const packed = await run(['pack', root, '--json', '--pack-destination', temporary,
-      '--ignore-scripts', '--cache', path.join(temporary, 'pack-cache')]);
-    assert.equal(packed.status, 0, packed.stderr);
-    const launcher = fs.readFileSync(path.join(temporary, JSON.parse(packed.stdout)[0].filename));
-    const platformName = `tokenmarket-${key}`;
-    const nativePath = fs.statSync(platformTarball).isDirectory()
-      ? path.join(platformTarball, `${platformName}-${pkg.version}.tgz`) : platformTarball;
-    const native = fs.readFileSync(path.resolve(nativePath));
+    const tarball = fs.statSync(input).isDirectory() ? path.join(input, `${pkg.name}-${pkg.version}.tgz`) : input;
+    const archive = fs.readFileSync(path.resolve(tarball));
     let origin;
     const downloaded = new Set();
     registry = http.createServer((request, response) => {
       const name = decodeURIComponent(new URL(request.url, 'http://localhost').pathname.slice(1));
-      const bytes = name === 'launcher.tgz' ? launcher : name === 'native.tgz' ? native : null;
+      const bytes = name === 'package.tgz' ? archive : null;
       if (bytes) {
         downloaded.add(name);
         response.writeHead(200, { 'Content-Type': 'application/octet-stream' });
         response.end(bytes);
-      } else if (name === pkg.name || name === platformName) {
-        const data = name === pkg.name ? launcher : native;
-        const manifest = name === pkg.name ? pkg : {
-          name: platformName, version: pkg.version,
-          os: [process.platform], cpu: [process.arch],
-        };
+      } else if (name === pkg.name) {
         response.setHeader('Content-Type', 'application/json');
         response.end(JSON.stringify({
           name, 'dist-tags': { latest: pkg.version }, versions: {
-            [pkg.version]: { ...manifest, dist: {
-              tarball: `${origin}/${name === pkg.name ? 'launcher' : 'native'}.tgz`,
-              integrity: `sha512-${createHash('sha512').update(data).digest('base64')}`,
+            [pkg.version]: { ...pkg, dist: {
+              tarball: `${origin}/package.tgz`,
+              integrity: `sha512-${createHash('sha512').update(archive).digest('base64')}`,
             } },
           },
         }));
@@ -88,12 +76,12 @@ async function main() {
       registry.listen(0, '127.0.0.1', resolve);
     });
     origin = `http://127.0.0.1:${registry.address().port}`;
-    const exec = args => run(['exec', '--yes', '--include=optional', '--registry', origin,
+    const exec = args => run(['exec', '--yes', '--ignore-scripts', '--omit=optional', '--registry', origin,
       '--package', `${pkg.name}@${pkg.version}`, '--', 'tokenmarket', ...args]);
     const version = await exec(['--version']);
     assert.equal(version.status, 0, version.stderr);
     assert.equal(version.stdout.trim(), `tokenmarket ${pkg.version}`);
-    assert.deepEqual([...downloaded].sort(), ['launcher.tgz', 'native.tgz']);
+    assert.deepEqual([...downloaded], ['package.tgz']);
     const help = await exec(['--help']);
     assert.equal(help.status, 0, help.stderr);
     for (const command of ['setup', 'doctor', 'test', 'keys']) assert.match(help.stdout, new RegExp(command));
