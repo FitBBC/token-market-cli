@@ -167,4 +167,4 @@ npm install -g tokenmarket
 
 ### CLI 修改前的配置在哪里
 
-CLI 在修改已有配置前会备份到 `~/.tokensmarket/backups/`，setup 的输出也会显示备份路径。
+CLI 在修改已有配置前会备份到 `~/.tokenmarket/backups/`，setup 的输出也会显示备份路径。

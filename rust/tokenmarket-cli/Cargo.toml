@@ -1,0 +1,17 @@
+[package]
+name = "tokenmarket-cli"
+version = "0.1.0"
+edition = "2021"
+license = "UNLICENSED"
+
+[[bin]]
+name = "tokenmarket"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+tokenmarket-core = { path = "../tokenmarket-core" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[workspace]

@@ -3,7 +3,7 @@
 The desktop application starts with account login. Terminal CLI setup continues
 using its existing loopback authorization, tool/workspace consent and key flow.
 
-Desktop commands call the public `tokensmarket_core::desktop::DesktopLogin`
+Desktop commands call the public `tokenmarket_core::desktop::DesktopLogin`
 application entry. `begin` creates S256 PKCE and a random state; `complete`
 validates the fixed `tokenmarket://auth/callback` scheme, request/state and expiry
 before exchanging a one-time code. `cancel` prevents a late exchange from becoming
@@ -125,7 +125,7 @@ Ordinary automated suites keep `tests/native_credentials.rs` ignored and do not
 write OS credentials. To opt in on macOS or Windows, run:
 
 ```sh
-cargo test --manifest-path rust/tokensmarket-core/Cargo.toml --test native_credentials --locked -- --ignored --nocapture
+cargo test --manifest-path rust/tokenmarket-core/Cargo.toml --test native_credentials --locked -- --ignored --nocapture
 ```
 
 This smoke uses the production private-store adapter with a random `.invalid`

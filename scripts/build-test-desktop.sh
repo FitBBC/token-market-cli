@@ -4,7 +4,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 config_file=$(mktemp "${TMPDIR:-/tmp}/token-market-test-config.XXXXXX.json")
 trap 'rm -f "$config_file"' EXIT
 cat > "$config_file" <<'JSON'
-{"productName":"Token Market Test","identifier":"cn.tokensmarket.setup.test"}
+{"productName":"Token Market Test","identifier":"cn.tokenmarket.setup.test"}
 JSON
 export TOKEN_MARKET_BUILD_CONSOLE_API_BASE_URL='https://console-api-test.tokensapi.cn'
 export TOKEN_MARKET_BUILD_GATEWAY_API_BASE_URL='https://api-test.tokensapi.cn'

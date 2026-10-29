@@ -74,15 +74,15 @@ jobs:
           targets: ${{ matrix.target }}
       - uses: swatinem/rust-cache@v2
         with:
-          workspaces: rust/tokensmarket-cli
+          workspaces: rust/tokenmarket-cli
       - name: Test npm launcher
         run: npm test
       - name: Test CLI
-        run: cargo test --locked --manifest-path rust/tokensmarket-cli/Cargo.toml
+        run: cargo test --locked --manifest-path rust/tokenmarket-cli/Cargo.toml
       - name: Build CLI
-        run: cargo build --release --locked --manifest-path rust/tokensmarket-cli/Cargo.toml --target ${{ matrix.target }}
+        run: cargo build --release --locked --manifest-path rust/tokenmarket-cli/Cargo.toml --target ${{ matrix.target }}
       - name: Stage platform package
-        run: npm run package:platform -- ${{ matrix.key }} rust/tokensmarket-cli/target/${{ matrix.target }}/release/${{ matrix.binary }}
+        run: npm run package:platform -- ${{ matrix.key }} rust/tokenmarket-cli/target/${{ matrix.target }}/release/${{ matrix.binary }}
       - name: Pack native smoke-test tarball
         run: npm pack --pack-destination . --ignore-scripts
       - name: Verify actual npx installation

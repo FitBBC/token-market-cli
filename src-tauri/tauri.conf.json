@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Token Market",
   "version": "1.0.0",
-  "identifier": "cn.tokensmarket.setup",
+  "identifier": "cn.tokenmarket.setup",
   "build": {
     "frontendDist": "../src/tauri-ui"
   },

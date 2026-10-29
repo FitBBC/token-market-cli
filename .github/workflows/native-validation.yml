@@ -38,22 +38,22 @@ jobs:
       # an earlier command failure behind the exit code of a later command.
       # Subsequent checks still run after a check fails; the job remains failed.
       - name: Check Rust formatting
-        run: cargo fmt --manifest-path rust/tokensmarket-core/Cargo.toml --all --check
+        run: cargo fmt --manifest-path rust/tokenmarket-core/Cargo.toml --all --check
 
       - name: Test shared core
         if: ${{ !cancelled() }}
-        run: cargo test --manifest-path rust/tokensmarket-core/Cargo.toml --all-targets --no-fail-fast --locked
+        run: cargo test --manifest-path rust/tokenmarket-core/Cargo.toml --all-targets --no-fail-fast --locked
 
       # Opt in only on the hosted Windows runner. This writes/deletes one fake
       # .invalid fixture through the production store and reads it in a new process.
       # Do not unlock/reconfigure the OS store or provide account credentials.
       - name: Smoke test real Windows credential persistence
         if: ${{ !cancelled() && runner.os == 'Windows' }}
-        run: cargo test --manifest-path rust/tokensmarket-core/Cargo.toml --test native_credentials --locked -- --ignored --nocapture
+        run: cargo test --manifest-path rust/tokenmarket-core/Cargo.toml --test native_credentials --locked -- --ignored --nocapture
 
       - name: Test terminal CLI compatibility
         if: ${{ !cancelled() }}
-        run: cargo test --manifest-path rust/tokensmarket-cli/Cargo.toml --all-targets --locked
+        run: cargo test --manifest-path rust/tokenmarket-cli/Cargo.toml --all-targets --locked
 
       - name: Check native desktop compilation
         if: ${{ !cancelled() }}

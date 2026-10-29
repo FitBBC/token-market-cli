@@ -167,4 +167,4 @@ Check whether the tool's settings were changed after connecting. Follow the prom
 
 ### Find configuration backups made by the CLI
 
-The CLI backs up existing configuration to `~/.tokensmarket/backups/` before changing it. The setup output also shows the backup path.
+The CLI backs up existing configuration to `~/.tokenmarket/backups/` before changing it. The setup output also shows the backup path.

@@ -83,11 +83,11 @@ for this new feature, so no compatibility migration was added.
 Source/fixture checks (run on both native CI hosts):
 
 ```sh
-cargo fmt --manifest-path rust/tokensmarket-core/Cargo.toml --all --check
-cargo fmt --manifest-path rust/tokensmarket-cli/Cargo.toml --all --check
+cargo fmt --manifest-path rust/tokenmarket-core/Cargo.toml --all --check
+cargo fmt --manifest-path rust/tokenmarket-cli/Cargo.toml --all --check
 cargo fmt --manifest-path src-tauri/Cargo.toml --all --check
-cargo test --manifest-path rust/tokensmarket-core/Cargo.toml --all-targets --locked
-cargo test --manifest-path rust/tokensmarket-cli/Cargo.toml --all-targets --locked
+cargo test --manifest-path rust/tokenmarket-core/Cargo.toml --all-targets --locked
+cargo test --manifest-path rust/tokenmarket-cli/Cargo.toml --all-targets --locked
 cargo test --manifest-path src-tauri/Cargo.toml --all-targets --locked
 ```
 

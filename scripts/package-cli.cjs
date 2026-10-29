@@ -10,7 +10,7 @@ const pkg = require('../package.json');
 function packagePlatform(key, binary, output = path.join(root, 'npm', 'native')) {
   const entry = platforms[key];
   if (!entry) throw new Error(`Unknown platform: ${key}`);
-  const cargo = fs.readFileSync(path.join(root, 'rust/tokensmarket-cli/Cargo.toml'), 'utf8');
+  const cargo = fs.readFileSync(path.join(root, 'rust/tokenmarket-cli/Cargo.toml'), 'utf8');
   if (!cargo.includes(`version = "${pkg.version}"`)) {
     throw new Error('The npm and Rust CLI versions must match.');
   }

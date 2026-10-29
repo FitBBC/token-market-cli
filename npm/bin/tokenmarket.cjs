@@ -14,7 +14,7 @@ function resolveBinary(platform = process.platform, arch = process.arch, root = 
     throw new Error(`Unsupported platform: ${key}. Supported: ${Object.keys(platforms).join(', ')}.`);
   }
   if (platform === 'linux' && !process.report.getReport().header.glibcVersionRuntime) {
-    throw new Error('The prebuilt Linux CLI requires glibc. On Alpine/musl, build rust/tokensmarket-cli from source.');
+    throw new Error('The prebuilt Linux CLI requires glibc. On Alpine/musl, build rust/tokenmarket-cli from source.');
   }
   const directory = path.join(root, 'npm', 'native', key);
   const manifest = path.join(directory, 'manifest.json');

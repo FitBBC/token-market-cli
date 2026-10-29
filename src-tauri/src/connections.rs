@@ -1,5 +1,5 @@
 use tauri::{AppHandle, Manager};
-use tokensmarket_core::{
+use tokenmarket_core::{
     connections::{
         ConnectContext, ConnectionManager, ConnectionSummary, ConnectionTestRequest,
         ConnectionTestResult, DisconnectOutcome, DisconnectRequest, ReconnectOutcome,
@@ -12,8 +12,8 @@ fn current_context(
     app: &AppHandle,
 ) -> Result<
     (
-        tokensmarket_core::desktop::DesktopSession,
-        tokensmarket_core::desktop::DesktopIdentity,
+        tokenmarket_core::desktop::DesktopSession,
+        tokenmarket_core::desktop::DesktopIdentity,
     ),
     String,
 > {
@@ -43,10 +43,10 @@ fn current_context(
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReconnectPreview {
-    old_owner: tokensmarket_core::desktop::DesktopIdentity,
-    old_workspace: tokensmarket_core::desktop::DesktopIdentity,
-    current_owner: tokensmarket_core::desktop::DesktopIdentity,
-    current_workspace: tokensmarket_core::desktop::DesktopIdentity,
+    old_owner: tokenmarket_core::desktop::DesktopIdentity,
+    old_workspace: tokenmarket_core::desktop::DesktopIdentity,
+    current_owner: tokenmarket_core::desktop::DesktopIdentity,
+    current_workspace: tokenmarket_core::desktop::DesktopIdentity,
 }
 #[tauri::command]
 pub fn prepare_tool_reconnect(
@@ -54,7 +54,7 @@ pub fn prepare_tool_reconnect(
     tool: String,
     expected_key_id: String,
 ) -> Result<ReconnectPreview, String> {
-    let tool = tokensmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
+    let tool = tokenmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
     let (session, workspace) = current_context(&app)?;
     ToolInventory::current()
         .require_installed(tool)
@@ -81,7 +81,7 @@ pub async fn reconnect_tool(
     expected_owner_id: String,
     expected_workspace_id: String,
 ) -> Result<ReconnectOutcome, String> {
-    let tool = tokensmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
+    let tool = tokenmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
     let (session, workspace) = current_context(&app)?;
     if session.user.id != expected_owner_id || workspace.id != expected_workspace_id {
         return Err("账号或当前空间已改变，请重新确认接入归属".into());
@@ -105,7 +105,7 @@ pub async fn reconnect_tool(
 
 #[tauri::command]
 pub async fn connect_tool(app: AppHandle, tool: String) -> Result<ConnectionSummary, String> {
-    let tool = tokensmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
+    let tool = tokenmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
     // Capture one operation context; later header changes never rebind this action.
     let (session, workspace) = current_context(&app)?;
     let inventory = ToolInventory::current();
@@ -135,7 +135,7 @@ pub async fn test_tool_connection(
     expected_key_id: String,
     request: ConnectionTestRequest,
 ) -> Result<ConnectionTestResult, String> {
-    let tool = tokensmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
+    let tool = tokenmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
     app.state::<ConnectionManager>()
         .test_connection(tool, &expected_key_id, request)
         .await
@@ -149,7 +149,7 @@ pub async fn disconnect_tool(
     expected_key_id: String,
     request: DisconnectRequest,
 ) -> Result<DisconnectOutcome, String> {
-    let tool = tokensmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
+    let tool = tokenmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
     // Local cancellation remains available after account changes or session expiration.
     // A current session only authorizes the optional disable of the old record's exact key.
     let session = app
@@ -170,7 +170,7 @@ pub async fn disconnect_tool(
 
 #[tauri::command]
 pub async fn launch_connected_tool(app: AppHandle, tool: String) -> Result<(), String> {
-    let id = tokensmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
+    let id = tokenmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
     let inventory = ToolInventory::current();
     let plan = inventory.launch_plan(id).map_err(|e| e.to_string())?;
     if !app

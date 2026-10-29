@@ -2,8 +2,8 @@ use crate::DesktopState;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
-use tokensmarket_core::desktop::{DesktopIdentity, DesktopSession};
-use tokensmarket_core::desktop_workspace::{
+use tokenmarket_core::desktop::{DesktopIdentity, DesktopSession};
+use tokenmarket_core::desktop_workspace::{
     menu_allows, DesktopWorkspace, DesktopWorkspaceController, WorkspaceSnapshot,
 };
 
@@ -16,7 +16,7 @@ impl WorkspaceState {
         Self {
             owner: Mutex::new(None),
             controller: DesktopWorkspaceController::new(DesktopWorkspace::new(
-                tokensmarket_core::config::console_api_base_url(),
+                tokenmarket_core::config::console_api_base_url(),
                 String::new(),
             )),
         }

@@ -8,12 +8,12 @@ use std::sync::{
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_opener::OpenerExt;
-use tokensmarket_core::desktop::{
+use tokenmarket_core::desktop::{
     CachedDesktopCredentials, DesktopClient, DesktopLogin, DesktopSession, LoginAttempt,
     NativeDesktopCredentials,
 };
 
-use tokensmarket_core::setup::{run_setup, SetupProgress};
+use tokenmarket_core::setup::{run_setup, SetupProgress};
 
 #[derive(Clone, Serialize, Default)]
 struct SetupStatus {
@@ -30,27 +30,27 @@ struct SetupState {
 
 // Read-only catalogue and installation gate shared with subsequent connection commands.
 #[tauri::command]
-fn desktop_tool_inventory() -> Result<Vec<tokensmarket_core::inventory::ToolInventoryEntry>, String>
+fn desktop_tool_inventory() -> Result<Vec<tokenmarket_core::inventory::ToolInventoryEntry>, String>
 {
-    tokensmarket_core::inventory::ToolInventory::current()
+    tokenmarket_core::inventory::ToolInventory::current()
         .list()
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn prepare_tool_connect(tool: String) -> Result<(), String> {
-    let tool = tokensmarket_core::tool_id(&tool).map_err(|error| error.to_string())?;
-    tokensmarket_core::inventory::ToolInventory::current()
+    let tool = tokenmarket_core::tool_id(&tool).map_err(|error| error.to_string())?;
+    tokenmarket_core::inventory::ToolInventory::current()
         .require_installed(tool)
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
 fn download_tool(app: AppHandle, tool: String) -> Result<(), String> {
-    let tool = tokensmarket_core::tool_id(&tool).map_err(|error| error.to_string())?;
+    let tool = tokenmarket_core::tool_id(&tool).map_err(|error| error.to_string())?;
     app.opener()
         .open_url(
-            tokensmarket_core::inventory::official_download_url(tool),
+            tokenmarket_core::inventory::official_download_url(tool),
             None::<&str>,
         )
         .map_err(|_| "无法打开官网下载页面，请稍后重试".into())
@@ -58,9 +58,9 @@ fn download_tool(app: AppHandle, tool: String) -> Result<(), String> {
 
 #[tauri::command]
 fn tool_status(tool: String) -> serde_json::Value {
-    match tokensmarket_core::adapters::tool_id(&tool) {
+    match tokenmarket_core::adapters::tool_id(&tool) {
         Ok(id) => {
-            let adapter = tokensmarket_core::adapters::get_adapter(id);
+            let adapter = tokenmarket_core::adapters::get_adapter(id);
             serde_json::json!({
                 "installed": adapter.is_installed(),
                 "configPath": adapter.config_path().display().to_string(),
@@ -340,10 +340,10 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .manage(SetupState::default())
-        .manage(tokensmarket_core::connections::ConnectionManager::current())
+        .manage(tokenmarket_core::connections::ConnectionManager::current())
         .manage(workspace::WorkspaceState::new())
         .setup(|app| {
-            let api_base = tokensmarket_core::config::console_api_base_url();
+            let api_base = tokenmarket_core::config::console_api_base_url();
             app.manage(DesktopState {
                 login: DesktopLogin::with_credentials(
                     app.path().app_local_data_dir()?.join("desktop-login"),

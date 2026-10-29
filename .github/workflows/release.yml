@@ -33,8 +33,8 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: |
-            rust/tokensmarket-core
-            rust/tokensmarket-cli
+            rust/tokenmarket-core
+            rust/tokenmarket-cli
             src-tauri
 
       - name: Setup Node.js
@@ -44,9 +44,9 @@ jobs:
 
       - name: Run Rust tests
         run: |
-          cargo fmt --manifest-path rust/tokensmarket-core/Cargo.toml --all --check
-          cargo test --manifest-path rust/tokensmarket-core/Cargo.toml --all-targets
-          cargo test --manifest-path rust/tokensmarket-cli/Cargo.toml --all-targets
+          cargo fmt --manifest-path rust/tokenmarket-core/Cargo.toml --all --check
+          cargo test --manifest-path rust/tokenmarket-core/Cargo.toml --all-targets
+          cargo test --manifest-path rust/tokenmarket-cli/Cargo.toml --all-targets
           cargo check --manifest-path src-tauri/Cargo.toml
 
       - name: Build and release with Tauri
