@@ -24,6 +24,9 @@ _Avoid_: Current workspace
 A local Agent tool's configured access to Token Market through an Agent API Key belonging to its bound workspace. This release manages one active configuration per tool on a device; its connection is independent of desktop login and other devices.
 _Avoid_: Desktop login
 
+**Managed Configuration File**:
+A local Agent configuration or credential file modified by a Tool Connection. Its current contents may also include settings maintained by the user or the Agent itself.
+
 **Disconnect**:
 The action that restores local configuration taken over by a Tool Connection while preserving later user changes. Server key disabling is best-effort and is not required for local disconnection to complete.
 _Avoid_: Revoke, logout
