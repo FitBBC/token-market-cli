@@ -4,134 +4,73 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Token Market</title>
+<link rel="stylesheet" href="app.css">
 <link rel="stylesheet" href="workspace.css">
-<style>
-:root { color-scheme:light; --background:#fafafa; --surface:#fff; --ink:#171717; --muted:#666; --line:#e5e5e5; --error:#b42318; }
-* { box-sizing:border-box; }
-body { margin:0; min-height:100vh; color:var(--ink); background:var(--background); font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
-main { min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:48px 24px; }
-.brand { font-size:22px; font-weight:650; letter-spacing:-.6px; margin-bottom:64px; }
-.panel { width:min(360px,100%); text-align:center; }
-h1 { margin:0 0 12px; font-size:28px; font-weight:600; letter-spacing:-.7px; }
-p { color:var(--muted); margin:0 0 28px; font-size:14px; }
-button { display:block; width:100%; min-height:46px; border:1px solid var(--line); border-radius:10px; font:inherit; font-size:14px; font-weight:550; cursor:pointer; background:var(--surface); color:var(--ink); margin:12px 0; padding:10px 16px; }
-button.primary { background:var(--ink); color:var(--surface); border-color:var(--ink); }
-button:hover { opacity:.8; }
-button:focus-visible { outline:3px solid #93b4ff; outline-offset:3px; }
-button:disabled { opacity:.5; cursor:wait; }
-button.quiet { border-color:transparent; background:transparent; color:var(--muted); }
-#feedback { min-height:44px; margin-top:20px; font-size:13px; overflow-wrap:anywhere; }
-#feedback.error { color:var(--error); }
-.context { margin-top:24px; padding:24px; border:1px solid var(--line); border-radius:12px; text-align:left; background:var(--surface); }
-.context span { display:block; color:var(--muted); font-size:12px; }
-.context strong { display:block; font-size:16px; overflow-wrap:anywhere; }
-footer { margin-top:64px; color:var(--muted); font-size:12px; }
-[hidden] { display:none !important; }
-</style>
 <link rel="stylesheet" href="tools.css">
 </head>
 <body>
-<main>
-<div class="brand">Token Market</div>
-<section id="login" class="panel" aria-labelledby="title">
-<h1 id="title">登录 Token Market</h1>
-<p id="intro">使用浏览器中的账号登录，管理本机的 Agent。</p>
-<button id="begin" class="primary">登录</button>
-<div id="waiting" hidden>
-<p role="status">请在浏览器中完成授权</p>
-<button id="reopen" class="primary">打开登录页面</button>
-<button id="copy">复制登录链接</button>
-<button id="cancel" class="quiet">取消等待</button>
-</div>
-<div id="feedback" role="status" aria-live="polite"></div>
+<section id="login" class="login-page" aria-labelledby="title">
+  <div class="login-content">
+    <img class="login-logo" src="assets/token-market.png" alt="Token Market">
+    <h1 id="title">连接你的 Agent</h1>
+    <p id="intro">使用 Token Market 账号登录，<br>在一个地方管理本机工具。</p>
+    <button id="begin" class="primary">使用浏览器登录</button>
+    <div id="waiting" class="login-waiting" hidden>
+      <span class="spinner" aria-hidden="true"></span>
+      <h2>请在浏览器中完成登录</h2>
+      <p role="status">授权完成后，会自动返回应用。</p>
+      <button id="reopen">重新打开登录页</button>
+      <button id="copy">复制登录链接</button>
+      <button id="cancel" class="quiet">取消等待</button>
+    </div>
+    <div id="feedback" role="status" aria-live="polite"></div>
+  </div>
 </section>
-<section id="signed-in" class="panel" hidden aria-labelledby="welcome">
-<div id="workspace-region"></div>
-<h1 id="welcome" hidden>已登录</h1>
-<p hidden>已进入默认空间</p>
-<div class="context" hidden><span>账号</span><strong id="account"></strong><span>当前空间</span><strong id="workspace"></strong></div>
-<button id="change-account" hidden>切换账号</button>
-<button id="logout" class="quiet" hidden>退出登录</button>
+<section id="signed-in" class="desktop-shell" hidden>
+  <aside class="sidebar">
+    <div class="brand"><img src="assets/token-market.png" alt="">Token Market</div>
+    <nav class="primary-nav" aria-label="主导航">
+      <button data-page="tools" class="active"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>我的 Agent</button>
+      <button data-page="account"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7V5a2 2 0 0 1 2-2h13v4M4 7h15a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z"/><path d="M16 11h5v6h-5a2 2 0 0 1 0-6Z"/></svg>账号与空间</button>
+      <button data-page="help"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9 9a3 3 0 0 1 6 0c0 2-3 2-3 4m0 3v1"/></svg>使用帮助</button>
+    </nav>
+    <div class="sidebar-note"><strong>连接你的 Agent</strong><p>在熟悉的工具里，<br>继续你的工作。</p></div>
+    <div id="sidebar-profile"></div>
+  </aside>
+  <main id="app-content" class="app-content">
+    <header class="app-topbar"><span id="breadcrumb">工作台 / 我的 Agent</span><span>本机工具管理</span></header>
+    <div id="session-feedback" class="notice" role="status" hidden></div>
+    <section id="tools-page" data-view="tools">
+      <header class="page-heading"><div><h1>你的 Agent</h1><p>连接本机工具，在熟悉的地方开始工作。</p></div><button id="detect-tools">重新检测</button></header>
+      <div id="workspace-region"></div>
+      <section id="tools-region" aria-label="本机 Agent 工具" hidden></section>
+      <footer class="page-note">切换当前空间不会改变已有连接的计费空间。<button class="quiet" data-page="help">了解接入流程</button></footer>
+    </section>
+    <section id="account-page" data-view="account" hidden>
+      <header class="page-heading"><div><h1>账号与空间</h1><p>管理当前身份、空间和可用余额。</p></div></header>
+      <div id="workspace-account-region"></div>
+    </section>
+    <section id="tool-detail-page" data-view="detail" hidden><div id="tool-detail-region"></div></section>
+    <section id="help-page" data-view="help" hidden>
+      <header class="page-heading"><div><h1>使用帮助</h1><p>从接入到开始工作，只需要几步。</p></div></header>
+      <div class="page-grid">
+        <section class="sheet"><h2>开始使用</h2><ol class="steps"><li><h3>安装你常用的工具</h3><p>安装完成后，返回首页点击“重新检测”。</p></li><li><h3>确认空间，然后接入</h3><p>接入会配置模型，当前空间用于这次新连接的计费归属。</p></li><li><h3>重新打开工具</h3><p>已有会话请先退出，让工具读取新的模型配置。</p></li><li><h3>需要时，测试一次</h3><p>连接详情中可发起文本测试，确认费用后才发送请求。</p></li></ol></section>
+        <section class="sheet"><h2>常见问题</h2>
+          <details class="faq" open><summary>接入后为什么显示“未测试”？</summary><p>接入只配置工具，不会自动发送模型请求。测试由你单独发起，可能产生费用。</p></details>
+          <details class="faq"><summary>切换空间会影响已有工具吗？</summary><p>已有工具保持自己的计费空间。需要更换归属时，在连接详情中重新接入并确认目标空间。</p></details>
+          <details class="faq"><summary>退出登录会删除工具配置吗？</summary><p>不会。退出桌面账号不会重写已有 Agent 配置。</p></details>
+          <details class="faq"><summary>文本测试通过代表什么？</summary><p>表示一次完整文本输出成功。流式输出、工具调用和 Agent 运行表现需要在实际工具中确认。</p></details>
+          <details class="faq"><summary>配置变化后为什么不能测试？</summary><p>配置可能与接入记录不一致。请检查配置或重新接入，以确保测试使用正确的连接。</p></details>
+        </section>
+      </div>
+    </section>
+  </main>
+  <button id="change-account" hidden>切换账号</button><button id="logout" hidden>退出登录</button>
 </section>
-<section id="tools-region" hidden aria-label="本机 Agent 工具"></section>
-<footer>Token Market · 连接你的 Agent</footer>
-</main>
+<script src="shell.js"></script>
 <script src="workspace.js"></script>
 <script src="tools.js"></script>
 <script src="connection-test.js"></script>
-<script>
-const invoke = window.__TAURI__.core.invoke;
-const el = id => document.getElementById(id);
-let pending = null;
-let starting = false;
-function feedback(message, isError = false) {
-  el('feedback').textContent = message;
-  el('feedback').className = isError ? 'error' : '';
-}
-function render(status) {
-  pending = status.pending;
-  const signedIn = Boolean(status.context);
-  window.TokenMarketWorkspace?.setAuthenticated(status.context);
-  el('login').hidden = signedIn;
-  el('signed-in').hidden = !signedIn;
-  window.TokenMarketTools?.setAuthenticated(signedIn);
-  el('waiting').hidden = !pending && !starting && !status.exchanging;
-  el('begin').hidden = Boolean(pending) || starting || Boolean(status.exchanging);
-  el('begin').disabled = Boolean(status.restoring);
-  if (status.restoring && !signedIn) feedback('正在恢复登录…');
-  el('copy').disabled = !pending;
-  el('reopen').disabled = !pending;
-  if (signedIn) {
-    el('account').textContent = status.context.user.name;
-    el('workspace').textContent = status.context.default_workspace.name;
-  }
-  if (status.error) feedback(status.error, true);
-}
-el('begin').onclick = async () => {
-  starting = true;
-  feedback('正在打开浏览器…');
-  render({ pending:null });
-  try { pending = await invoke('begin_desktop_login'); feedback(''); }
-  catch (error) { feedback(String(error), true); }
-  finally { starting = false; await refresh(); }
-};
-el('copy').onclick = async () => {
-  if (!pending) return;
-  try { await navigator.clipboard.writeText(pending.authorize_url); feedback('登录链接已复制'); }
-  catch (_) { feedback('复制失败，请点击“打开登录页面”重试', true); }
-};
-el('reopen').onclick = async () => {
-  try { await invoke('reopen_desktop_login'); }
-  catch (error) { feedback(String(error), true); }
-};
-el('cancel').onclick = async () => {
-  try { await invoke('cancel_desktop_login'); starting = false; feedback('已取消等待'); await refresh(); }
-  catch (error) { feedback(String(error), true); }
-};
-el('logout').onclick = async () => {
-  try {
-    const result = await invoke('logout_desktop_session');
-    feedback(result.warning || '已退出登录，已有 Agent 配置保留', Boolean(result.warning));
-    await refresh();
-  } catch (error) { feedback(String(error), true); await refresh(); }
-};
-el('change-account').onclick = async () => {
-  try { await invoke('logout_desktop_session'); await refresh(); el('begin').click(); }
-  catch (error) { feedback(String(error), true); await refresh(); }
-};
-async function renewSession() {
-  try { render(await invoke('refresh_desktop_session')); }
-  catch (_) { feedback('无法验证桌面会话，请重新登录', true); }
-}
-window.addEventListener('focus', renewSession);
-setInterval(renewSession, 5 * 60 * 1000);
-async function refresh() {
-  try { render(await invoke('desktop_login_status')); }
-  catch (_) { feedback('无法读取登录状态，请重新打开应用', true); }
-}
-window.__TAURI__.event.listen('desktop-login-status', event => render(event.payload));
-refresh();
-setInterval(refresh, 1000);
-</script>
+<script src="app.js"></script>
 </body>
 </html>

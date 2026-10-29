@@ -136,7 +136,7 @@ async fn workbuddy_imports_all_compatible_models_and_restores_only_owned_fields_
         let inventory = inventory(root.path());
         let path = root.path().join("models.json");
         std::fs::write(&path, serde_json::to_vec(&original).unwrap()).unwrap();
-        let catalogue = json!({"data":[{"id":"vendor/zeta~1","display_name":"Zeta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"responses","supported_endpoints":["OPENAI_RESPONSES"]},{"id":"alpha","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"],"context_window_tokens":65536,"max_output_tokens":8192}]});
+        let catalogue = json!({"data":[{"id":"vendor/zeta~1","display_name":"Zeta","model_types":["TEXT_GENERATION"]},{"id":"responses","model_types":["IMAGE_GENERATION"]},{"id":"alpha","model_types":["TEXT_GENERATION"],"context_window_tokens":65536,"max_output_tokens":8192}]});
         let (url, server) = platform(catalogue, 2).await;
         let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url.clone());
         let summary = manager
@@ -225,7 +225,7 @@ async fn openclaw_preserves_selection_policy_and_other_providers_through_connect
     let path = root.path().join("openclaw.json");
     let original = json!({"models":{"mode":"replace","providers":{"other":{"baseUrl":"https://other"},"tokensmarket":{"custom":"keep"}}},"agents":{"defaults":{"model":{"primary":"other/existing"},"models":{"other/existing":{}}}},"custom":true});
     std::fs::write(&path, serde_json::to_vec(&original).unwrap()).unwrap();
-    let (url,server)=platform(json!({"data":[{"id":"zeta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"alpha","display_name":"Alpha","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"],"context_window_tokens":32768,"max_output_tokens":4096,"input_modalities":["text","image"]},{"id":"glm-5.3","supported_endpoints":["OPENAI_RESPONSES"]}]}),2).await;
+    let (url,server)=platform(json!({"data":[{"id":"zeta","model_types":["TEXT_GENERATION"]},{"id":"alpha","display_name":"Alpha","model_types":["TEXT_GENERATION"],"context_window_tokens":32768,"max_output_tokens":4096,"input_modalities":["text","image"]},{"id":"glm-5.3","model_types":["IMAGE_GENERATION"]}]}),2).await;
     let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url.clone());
     let summary = manager
         .connect(context(), ToolId::OpenClaw, &inventory, path.clone())
@@ -266,7 +266,7 @@ async fn opencode_imports_provider_map_without_changing_defaults_or_fabricating_
     let path = root.path().join("opencode.json");
     let original = json!({"model":"other/manual","small_model":"other/small","provider":{"other":{"models":{"manual":{"name":"Manual"}}},"tokensmarket":{"options":{"timeout":60000},"models":{"manual":{"name":"Manual"}},"custom":true}},"theme":"system"});
     std::fs::write(&path, serde_json::to_vec(&original).unwrap()).unwrap();
-    let (url,server)=platform(json!({"data":[{"id":"vendor/zeta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"],"context_window_tokens":65536},{"id":"alpha","display_name":"Alpha","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"],"context_window_tokens":32768,"max_output_tokens":4096},{"id":"messages","supported_endpoints":["ANTHROPIC_MESSAGES"]}]}),2).await;
+    let (url,server)=platform(json!({"data":[{"id":"vendor/zeta","model_types":["TEXT_GENERATION"],"context_window_tokens":65536},{"id":"alpha","display_name":"Alpha","model_types":["TEXT_GENERATION"],"context_window_tokens":32768,"max_output_tokens":4096},{"id":"messages","model_types":["IMAGE_GENERATION"]}]}),2).await;
     let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url.clone());
     assert_eq!(
         manager
@@ -310,7 +310,7 @@ async fn all_three_new_configs_disconnect_cleanly_and_empty_or_failed_catalogues
         let root = tempdir().unwrap();
         let inventory = inventory(root.path());
         let path = root.path().join("config.json");
-        let (url,server)=platform(json!({"data":[{"id":"one","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"two","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]}),2).await;
+        let (url,server)=platform(json!({"data":[{"id":"one","model_types":["TEXT_GENERATION"]},{"id":"two","model_types":["TEXT_GENERATION"]}]}),2).await;
         let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
         manager
             .connect(context(), tool, &inventory, path.clone())
@@ -329,9 +329,9 @@ async fn all_three_new_configs_disconnect_cleanly_and_empty_or_failed_catalogues
         assert_eq!(server.await.unwrap().len(), 2);
         for catalogue in [
             json!({"data":[]}),
-            json!({"data":[{"id":"glm-5.3","supported_endpoints":["OPENAI_RESPONSES"]}]}),
+            json!({"data":[{"id":"glm-5.3","model_types":["IMAGE_GENERATION"]}]}),
             json!({"fail_http":true}),
-            json!({"data":[{"id":"same","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"same","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]}),
+            json!({"data":[{"id":"same","model_types":["TEXT_GENERATION"]},{"id":"same","model_types":["TEXT_GENERATION"]}]}),
         ] {
             let original = if tool == ToolId::WorkBuddy {
                 "[ {\"id\":\"manual\",\"url\":\"https://manual\",\"apiKey\":\"private\"} ]"
@@ -438,7 +438,7 @@ async fn reconnect_all_three_retires_obsolete_models_and_preserves_the_first_bas
             _ => unreachable!(),
         };
         std::fs::write(&path, serde_json::to_vec(&original).unwrap()).unwrap();
-        let (url,server)=platform_sequence(vec![json!({"data":[{"id":"obsolete","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"retained","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"],"context_window_tokens":65536,"max_output_tokens":4096}]}),json!({"data":[{"id":"retained","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"new","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]})],6).await;
+        let (url,server)=platform_sequence(vec![json!({"data":[{"id":"obsolete","model_types":["TEXT_GENERATION"]},{"id":"retained","model_types":["TEXT_GENERATION"],"context_window_tokens":65536,"max_output_tokens":4096}]}),json!({"data":[{"id":"retained","model_types":["TEXT_GENERATION"]},{"id":"new","model_types":["TEXT_GENERATION"]}]})],6).await;
         let manager = ConnectionManager::new(
             root.path().join(".tokensmarket/desktop-connections"),
             url.clone(),
@@ -557,7 +557,7 @@ async fn workbuddy_existing_default_survives_connect_and_reconnect() {
     let inventory = inventory(root.path());
     let path = root.path().join("models.json");
     std::fs::write(&path, r#"[{"id":"alpha","isDefault":true}]"#).unwrap();
-    let catalogue = json!({"data":[{"id":"alpha","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"beta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]});
+    let catalogue = json!({"data":[{"id":"alpha","model_types":["TEXT_GENERATION"]},{"id":"beta","model_types":["TEXT_GENERATION"]}]});
     let (url, server) = platform_sequence(vec![catalogue.clone(), catalogue], 5).await;
     let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
     manager
@@ -589,8 +589,7 @@ async fn opencode_jsonc_keeps_comments_filename_and_manual_settings_through_repl
     let inv = inventory(root.path());
     let path = root.path().join("opencode.jsonc");
     std::fs::write(&path, "{\n // original comment\n \"model\": \"other/model\",\n \"provider\": {\n  /* provider note */ \"other\": {\"custom\": true,},\n },\n}\n").unwrap();
-    let catalogue =
-        json!({"data":[{"id":"alpha","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]});
+    let catalogue = json!({"data":[{"id":"alpha","model_types":["TEXT_GENERATION"]}]});
     let (url, server) = platform_sequence(vec![catalogue.clone(), catalogue], 5).await;
     let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
     manager
@@ -637,8 +636,8 @@ async fn disappearing_and_reappearing_models_restore_first_missing_and_explicit_
     let path = root.path().join("opencode.json");
     let original = json!({"provider":{"tokensmarket":{"options":{"apiKey":null},"models":{"alpha":{"name":"Personal","limit":{"context":null},"custom":true}}}},"model":"personal/model"});
     std::fs::write(&path, original.to_string()).unwrap();
-    let rich = json!({"data":[{"id":"alpha","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"],"context_window_tokens":65536,"max_output_tokens":4096},{"id":"beta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]});
-    let small = json!({"data":[{"id":"beta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]});
+    let rich = json!({"data":[{"id":"alpha","model_types":["TEXT_GENERATION"],"context_window_tokens":65536,"max_output_tokens":4096},{"id":"beta","model_types":["TEXT_GENERATION"]}]});
+    let small = json!({"data":[{"id":"beta","model_types":["TEXT_GENERATION"]}]});
     let (url, server) = platform_sequence(vec![rich.clone(), small.clone(), rich, small], 14).await;
     let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
     manager
@@ -697,8 +696,8 @@ async fn edits_to_retired_fields_remain_unowned_and_reacquisition_requires_expli
     let path = root.path().join("opencode.json");
     let original = json!({"provider":{"tokensmarket":{"options":{"apiKey":null},"models":{"alpha":{"name":"Personal","limit":{"context":null}}}}}});
     std::fs::write(&path, original.to_string()).unwrap();
-    let rich = json!({"data":[{"id":"alpha","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"],"context_window_tokens":65536,"max_output_tokens":4096},{"id":"beta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]});
-    let small = json!({"data":[{"id":"beta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]});
+    let rich = json!({"data":[{"id":"alpha","model_types":["TEXT_GENERATION"],"context_window_tokens":65536,"max_output_tokens":4096},{"id":"beta","model_types":["TEXT_GENERATION"]}]});
+    let small = json!({"data":[{"id":"beta","model_types":["TEXT_GENERATION"]}]});
     let (url, server) = platform_sequence(vec![rich.clone(), small.clone(), rich, small], 13).await;
     let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
     manager
@@ -780,7 +779,7 @@ async fn new_opencode_jsonc_keeps_a_later_comment_when_disconnect_removes_all_ma
     let inv = inventory(root.path());
     let path = root.path().join("opencode.jsonc");
     let (url, server) = platform(
-        json!({"data":[{"id":"alpha","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]}),
+        json!({"data":[{"id":"alpha","model_types":["TEXT_GENERATION"]}]}),
         2,
     )
     .await;

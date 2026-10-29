@@ -1,0 +1,152 @@
+[
+  {
+    "page": "home",
+    "width": 1440,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "contrast": [],
+    "broken": []
+  },
+  {
+    "page": "account",
+    "width": 1440,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "contrast": [],
+    "broken": []
+  },
+  {
+    "page": "detail",
+    "width": 1440,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "contrast": [],
+    "broken": []
+  },
+  {
+    "page": "help",
+    "width": 1440,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "contrast": [],
+    "broken": []
+  },
+  {
+    "page": "login",
+    "width": 1440,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "contrast": [],
+    "broken": []
+  },
+  {
+    "page": "home",
+    "width": 900,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "contrast": [],
+    "broken": []
+  },
+  {
+    "page": "account",
+    "width": 900,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "contrast": [],
+    "broken": []
+  },
+  {
+    "page": "detail",
+    "width": 900,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "contrast": [],
+    "broken": []
+  },
+  {
+    "page": "help",
+    "width": 900,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "contrast": [],
+    "broken": []
+  },
+  {
+    "page": "login",
+    "width": 900,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "contrast": [],
+    "broken": []
+  },
+  {
+    "page": "home",
+    "width": 375,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "contrast": [],
+    "broken": []
+  },
+  {
+    "page": "account",
+    "width": 375,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "contrast": [],
+    "broken": []
+  },
+  {
+    "page": "detail",
+    "width": 375,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "contrast": [],
+    "broken": []
+  },
+  {
+    "page": "help",
+    "width": 375,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "contrast": [],
+    "broken": []
+  },
+  {
+    "page": "login",
+    "width": 375,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "contrast": [],
+    "broken": []
+  }
+]

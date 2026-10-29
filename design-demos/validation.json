@@ -1,0 +1,247 @@
+[
+  {
+    "id": "dir-1",
+    "w": 1440,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "lowContrast": [],
+    "broken": [],
+    "smallTargets": [],
+    "fingerprint": {
+      "bg": [
+        233,
+        238,
+        245,
+        1
+      ],
+      "display": "-apple-system",
+      "body": null,
+      "fonts": {
+        "-apple-system": 455,
+        "ui-monospace": 14
+      },
+      "arrows": 0,
+      "eyebrows": []
+    }
+  },
+  {
+    "id": "dir-1",
+    "w": 900,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "lowContrast": [],
+    "broken": [],
+    "smallTargets": [],
+    "fingerprint": {
+      "bg": [
+        246,
+        248,
+        251,
+        1
+      ],
+      "display": "-apple-system",
+      "body": null,
+      "fonts": {
+        "-apple-system": 455,
+        "ui-monospace": 14
+      },
+      "arrows": 0,
+      "eyebrows": []
+    }
+  },
+  {
+    "id": "dir-1",
+    "w": 375,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "lowContrast": [],
+    "broken": [],
+    "smallTargets": [],
+    "fingerprint": {
+      "bg": [
+        246,
+        248,
+        251,
+        1
+      ],
+      "display": "-apple-system",
+      "body": null,
+      "fonts": {
+        "-apple-system": 393,
+        "ui-monospace": 14
+      },
+      "arrows": 0,
+      "eyebrows": []
+    }
+  },
+  {
+    "id": "dir-2",
+    "w": 1440,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "lowContrast": [],
+    "broken": [],
+    "smallTargets": [],
+    "fingerprint": {
+      "bg": [
+        13,
+        17,
+        19,
+        1
+      ],
+      "display": "-apple-system",
+      "body": "-apple-system",
+      "fonts": {
+        "-apple-system": 472,
+        "ui-monospace": 7
+      },
+      "arrows": 0,
+      "eyebrows": []
+    }
+  },
+  {
+    "id": "dir-2",
+    "w": 900,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "lowContrast": [
+      {
+        "text": "Anthropic Messages",
+        "ratio": 2.23,
+        "px": 12
+      }
+    ],
+    "broken": [],
+    "smallTargets": [],
+    "fingerprint": {
+      "bg": [
+        13,
+        17,
+        19,
+        1
+      ],
+      "display": "-apple-system",
+      "body": "-apple-system",
+      "fonts": {
+        "-apple-system": 472,
+        "ui-monospace": 7
+      },
+      "arrows": 0,
+      "eyebrows": []
+    }
+  },
+  {
+    "id": "dir-2",
+    "w": 375,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "lowContrast": [],
+    "broken": [],
+    "smallTargets": [],
+    "fingerprint": {
+      "bg": [
+        13,
+        17,
+        19,
+        1
+      ],
+      "display": "-apple-system",
+      "body": "-apple-system",
+      "fonts": {
+        "-apple-system": 224
+      },
+      "arrows": 0,
+      "eyebrows": []
+    }
+  },
+  {
+    "id": "dir-3",
+    "w": 1440,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "lowContrast": [],
+    "broken": [],
+    "smallTargets": [],
+    "fingerprint": {
+      "bg": [
+        241,
+        244,
+        248,
+        1
+      ],
+      "display": "-apple-system",
+      "body": null,
+      "fonts": {
+        "-apple-system": 453
+      },
+      "arrows": 0,
+      "eyebrows": []
+    }
+  },
+  {
+    "id": "dir-3",
+    "w": 900,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "lowContrast": [],
+    "broken": [],
+    "smallTargets": [],
+    "fingerprint": {
+      "bg": [
+        241,
+        244,
+        248,
+        1
+      ],
+      "display": "-apple-system",
+      "body": null,
+      "fonts": {
+        "-apple-system": 447
+      },
+      "arrows": 0,
+      "eyebrows": []
+    }
+  },
+  {
+    "id": "dir-3",
+    "w": 375,
+    "errors": [],
+    "overflow": false,
+    "small": [],
+    "bodySmall": [],
+    "lowContrast": [],
+    "broken": [],
+    "smallTargets": [],
+    "fingerprint": {
+      "bg": [
+        241,
+        244,
+        248,
+        1
+      ],
+      "display": "-apple-system",
+      "body": null,
+      "fonts": {
+        "-apple-system": 334
+      },
+      "arrows": 0,
+      "eyebrows": []
+    }
+  }
+]

@@ -1,0 +1,112 @@
+{
+  "checks": [
+    "首页六款工具",
+    "搜索匹配",
+    "空搜索结果",
+    "待接入过滤已安装工具",
+    "空间切换保留原连接",
+    "接入确认显示目标空间",
+    "接入完成不冒充测试通过",
+    "详情归属新空间",
+    "多模型工具要求选择模型",
+    "测试费用说明",
+    "失败状态使用文字与红色",
+    "配置变化阻止测试",
+    "配置冲突要求明确选择",
+    "取消冲突处理保留连接",
+    "取消接入后保留安装状态",
+    "工具检测失败可见",
+    "重新检测显示加载骨架",
+    "余额失败不是零余额",
+    "余额重试恢复",
+    "退出显示登录页",
+    "登录等待状态",
+    "可取消授权等待",
+    "登录失败可重试",
+    "模拟登录成功返回工具",
+    "密度与强调色刷新保留",
+    "可复位全部演示",
+    "Escape关闭弹窗",
+    "窄屏导航可用"
+  ],
+  "errors": [],
+  "visual": [
+    {
+      "name": "connect-confirm",
+      "small": [],
+      "bodySmall": [],
+      "lowContrast": [],
+      "broken": []
+    },
+    {
+      "name": "test-confirm",
+      "small": [],
+      "bodySmall": [],
+      "lowContrast": [],
+      "broken": []
+    },
+    {
+      "name": "test-passed",
+      "small": [],
+      "bodySmall": [],
+      "lowContrast": [],
+      "broken": []
+    },
+    {
+      "name": "test-failed",
+      "small": [],
+      "bodySmall": [],
+      "lowContrast": [],
+      "broken": []
+    },
+    {
+      "name": "configuration-changed",
+      "small": [],
+      "bodySmall": [],
+      "lowContrast": [],
+      "broken": []
+    },
+    {
+      "name": "disconnect-conflict",
+      "small": [],
+      "bodySmall": [],
+      "lowContrast": [],
+      "broken": []
+    },
+    {
+      "name": "inventory-error",
+      "small": [],
+      "bodySmall": [],
+      "lowContrast": [],
+      "broken": []
+    },
+    {
+      "name": "inventory-loading",
+      "small": [],
+      "bodySmall": [],
+      "lowContrast": [],
+      "broken": []
+    },
+    {
+      "name": "balance-error",
+      "small": [],
+      "bodySmall": [],
+      "lowContrast": [],
+      "broken": []
+    },
+    {
+      "name": "login-waiting",
+      "small": [],
+      "bodySmall": [],
+      "lowContrast": [],
+      "broken": []
+    },
+    {
+      "name": "login-error",
+      "small": [],
+      "bodySmall": [],
+      "lowContrast": [],
+      "broken": []
+    }
+  ]
+}

@@ -23,13 +23,19 @@ pub struct ManagedKeyRecord {
 }
 
 pub fn console_api_base_url() -> String {
-    std::env::var("TOKEN_MARKET_CONSOLE_API_BASE_URL")
-        .unwrap_or_else(|_| "https://console-api.tokensapi.cn".into())
+    std::env::var("TOKEN_MARKET_CONSOLE_API_BASE_URL").unwrap_or_else(|_| {
+        option_env!("TOKEN_MARKET_BUILD_CONSOLE_API_BASE_URL")
+            .unwrap_or("https://console-api.tokensapi.cn")
+            .into()
+    })
 }
 
 pub fn gateway_api_base_url() -> String {
-    std::env::var("TOKEN_MARKET_GATEWAY_API_BASE_URL")
-        .unwrap_or_else(|_| "https://api.tokensapi.cn".into())
+    std::env::var("TOKEN_MARKET_GATEWAY_API_BASE_URL").unwrap_or_else(|_| {
+        option_env!("TOKEN_MARKET_BUILD_GATEWAY_API_BASE_URL")
+            .unwrap_or("https://api.tokensapi.cn")
+            .into()
+    })
 }
 
 pub fn home_dir() -> PathBuf {

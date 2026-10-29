@@ -99,7 +99,7 @@ pub async fn switch_desktop_workspace(
 }
 #[tauri::command]
 pub async fn open_desktop_account_page(app: AppHandle, action: String) -> Result<(), String> {
-    let selected = current_context(&app)?;
+    current_context(&app)?;
     let session = session(&app)?;
     let state = app.state::<WorkspaceState>();
     if state.owner.lock().expect("workspace owner").as_deref() != Some(&session.session_token) {
@@ -120,7 +120,7 @@ pub async fn open_desktop_account_page(app: AppHandle, action: String) -> Result
         .ok_or("服务端缺少浏览器站点地址，请重新登录或联系管理员")?;
     let client = DesktopWorkspace::new(String::new(), origin);
     let url = client
-        .browser_url(&selected.id, &action)
+        .browser_url(&session.user.id, &action)
         .map_err(|e| e.to_string())?;
     app.opener()
         .open_url(url, None::<&str>)

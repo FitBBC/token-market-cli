@@ -73,17 +73,17 @@ async fn platform_with_failure(
                 if failure == Some("catalogue") && request.contains("Bearer sk-key-2") {
                     json!({"data":[]})
                 } else if failure == Some("protocol") && request.contains("Bearer sk-key-2") {
-                    json!({"data":[{"id":"glm-5.3","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]})
+                    json!({"data":[{"id":"glm-5.3","model_types":["IMAGE_GENERATION"]}]})
                 } else if harness {
                     if request.contains("Bearer sk-key-1") {
-                        json!({"data":[{"id":"zeta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"excluded","supported_endpoints":["OPENAI_RESPONSES"]},{"id":"alpha","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]})
+                        json!({"data":[{"id":"zeta","model_types":["TEXT_GENERATION"]},{"id":"excluded","model_types":["IMAGE_GENERATION"]},{"id":"alpha","model_types":["TEXT_GENERATION"]}]})
                     } else {
-                        json!({"data":[{"id":"beta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"gamma","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]})
+                        json!({"data":[{"id":"beta","model_types":["TEXT_GENERATION"]},{"id":"gamma","model_types":["TEXT_GENERATION"]}]})
                     }
                 } else if request.contains("Bearer sk-key-1") {
-                    json!({"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"],"context_window_tokens":202752}]})
+                    json!({"data":[{"id":"glm-5.3","model_types":["TEXT_GENERATION"],"context_window_tokens":202752}]})
                 } else {
-                    json!({"data":[{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"]}]})
+                    json!({"data":[{"id":"glm-5.3","model_types":["TEXT_GENERATION"]}]})
                 }
             } else if first.contains("/disable ") {
                 // Retiring old credentials is legal only after replacement files are visible.
@@ -736,7 +736,7 @@ async fn codex_reconnect_preserves_first_provider_and_later_toml_comments_and_un
 }
 
 #[tokio::test]
-async fn reconnect_rejects_fixed_model_protocol_loss_and_keeps_old_key_and_exact_config() {
+async fn reconnect_rejects_non_text_model_and_keeps_old_key_and_exact_config() {
     for tool in [ToolId::ClaudeCode, ToolId::Codex] {
         let root = tempdir().unwrap();
         let inv = inventory(root.path());

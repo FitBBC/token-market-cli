@@ -1,5 +1,35 @@
 use super::*;
 
+// Old saved receipts use endpoint metadata; new receipts use model_types.
+fn recorded_text_model(row: &Value) -> bool {
+    super::model_plan::is_text_generation(row)
+        || (row.get("model_types").is_none()
+            && row["endpoints"].as_array().is_some_and(|endpoints| {
+                endpoints
+                    .iter()
+                    .any(|endpoint| endpoint == "OPENAI_CHAT_COMPLETIONS")
+            }))
+}
+
+#[cfg(test)]
+mod model_tests {
+    use super::*;
+
+    #[test]
+    fn supports_new_and_legacy_saved_text_models_without_overriding_new_types() {
+        assert!(recorded_text_model(
+            &json!({"model_types":["TEXT_GENERATION"]})
+        ));
+        assert!(recorded_text_model(
+            &json!({"endpoints":["OPENAI_CHAT_COMPLETIONS"]})
+        ));
+        assert!(!recorded_text_model(
+            &json!({"model_types":["IMAGE_GENERATION"],"endpoints":["OPENAI_CHAT_COMPLETIONS"]})
+        ));
+        assert!(!recorded_text_model(&json!({})));
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ConnectionTestRequest {
     pub confirmed: bool,
@@ -77,7 +107,10 @@ impl ConnectionManager {
         super::restore::verify_applied(&record)?;
         let single = matches!(tool, ToolId::ClaudeCode | ToolId::Codex);
         let model = if single {
-            request.model.unwrap_or_else(|| "glm-5.3".into())
+            request
+                .model
+                .or_else(|| record.models.first().cloned())
+                .context("连接未配置模型")?
         } else {
             request
                 .model
@@ -89,18 +122,12 @@ impl ConnectionManager {
             _ => "OPENAI_CHAT_COMPLETIONS",
         };
         let compatible = single
-            || record.model_snapshot.iter().any(|row| {
-                row["id"] == model
-                    && row["supported_endpoints"]
-                        .as_array()
-                        .is_some_and(|endpoints| {
-                            endpoints
-                                .iter()
-                                .any(|endpoint| endpoint == "OPENAI_CHAT_COMPLETIONS")
-                        })
-            });
+            || record
+                .model_snapshot
+                .iter()
+                .any(|row| row["id"] == model && recorded_text_model(row));
         if !record.models.contains(&model)
-            || (single && model != "glm-5.3")
+            || (single && record.models.first() != Some(&model))
             || record.protocol != expected_protocol
             || !compatible
         {

@@ -120,7 +120,7 @@ async fn harness_connect_imports_every_chat_model_in_catalogue_order_and_preserv
         serde_yaml::to_string(&old_credentials).unwrap(),
     )
     .unwrap();
-    let catalogue = json!({"data":[{"id":"zeta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"],"context_window_tokens":65536,"max_output_tokens":8192,"input_modalities":["text","image"]},{"id":"responses-only","supported_endpoints":["OPENAI_RESPONSES"]},{"id":"alpha","display_name":"Alpha","supported_endpoints":["OPENAI_CHAT_COMPLETIONS","ANTHROPIC_MESSAGES"]},{"id":"missing-endpoints"}]});
+    let catalogue = json!({"data":[{"id":"zeta","model_types":["TEXT_GENERATION"],"context_window_tokens":65536,"max_output_tokens":8192,"input_modalities":["text","image"]},{"id":"responses-only","model_types":["IMAGE_GENERATION"]},{"id":"alpha","display_name":"Alpha","model_types":["TEXT_GENERATION"]},{"id":"missing-types"}]});
     let (url, server) = platform(catalogue.clone(), 2).await;
     let manager = ConnectionManager::new(
         root.path().join(".tokensmarket/desktop-connections"),
@@ -190,7 +190,7 @@ async fn harness_preserves_legacy_credentials_shape_and_declares_only_real_metad
         "OTHER_KEY: keep-secret\nTOKEN_MARKET_API_KEY: old-secret\n",
     )
     .unwrap();
-    let (url,server)=platform(json!({"data":[{"id":"custom-one","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"glm-5.3","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"],"context_window_tokens":0,"max_output_tokens":0}]}),2).await;
+    let (url,server)=platform(json!({"data":[{"id":"custom-one","model_types":["TEXT_GENERATION"]},{"id":"glm-5.3","model_types":["TEXT_GENERATION"],"context_window_tokens":0,"max_output_tokens":0}]}),2).await;
     let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
     let summary = manager
         .connect(
@@ -221,7 +221,7 @@ async fn harness_preserves_legacy_credentials_shape_and_declares_only_real_metad
 async fn harness_catalogue_failure_keeps_both_files_and_cleans_only_new_key_once() {
     for catalogue in [
         json!({"data":[]}),
-        json!({"data":[{"id":"glm-5.3","supported_endpoints":["OPENAI_RESPONSES"]},{"id":"unknown"}]}),
+        json!({"data":[{"id":"glm-5.3","model_types":["IMAGE_GENERATION"]},{"id":"unknown"}]}),
         json!({"error":{"message":"unavailable"}}),
         json!({"fail_http":true}),
     ] {
@@ -316,7 +316,7 @@ async fn second_file_write_failure_rolls_back_profile_and_retains_credentials() 
     std::fs::write(&credentials, original_credentials).unwrap();
     std::fs::set_permissions(&home, std::fs::Permissions::from_mode(0o500)).unwrap();
     let (url, server) = platform(
-        json!({"data":[{"id":"available","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]}),
+        json!({"data":[{"id":"available","model_types":["TEXT_GENERATION"]}]}),
         3,
     )
     .await;
@@ -357,7 +357,7 @@ async fn harness_disconnect_restores_both_owned_scopes_and_preserves_later_provi
     )
     .unwrap();
     let (url, server) = platform(
-        json!({"data":[{"id":"available","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]}),
+        json!({"data":[{"id":"available","model_types":["TEXT_GENERATION"]}]}),
         2,
     )
     .await;
@@ -422,7 +422,7 @@ async fn harness_disconnect_removes_new_owned_profile_and_versioned_credential_b
     let profile = root.path().join("profiles/desktop/cordis.patch.yml");
     let credentials = root.path().join(".credentials.yaml");
     let (url, server) = platform(
-        json!({"data":[{"id":"available","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]}]}),
+        json!({"data":[{"id":"available","model_types":["TEXT_GENERATION"]}]}),
         2,
     )
     .await;

@@ -129,6 +129,10 @@ impl ConfigDocument {
         models: &[Value],
     ) -> Result<PreparedConfiguration> {
         let model = models.first().context("当前 Key 没有兼容模型")?;
+        let model_id = model["id"]
+            .as_str()
+            .filter(|id| !id.is_empty())
+            .context("模型目录缺少模型 ID")?;
         match self {
             Self::MultiModel(config) => config.apply(gateway, key, models),
             Self::Harness(config) => {
@@ -160,7 +164,7 @@ impl ConfigDocument {
                 }
                 let mut fields = vec![];
                 for (path, applied) in [
-                    (vec!["model"], json!("glm-5.3")),
+                    (vec!["model"], json!(model_id)),
                     (vec!["model_provider"], json!("tokensmarket")),
                     (
                         vec!["model_providers", "tokensmarket", "name"],
@@ -233,14 +237,14 @@ impl ConfigDocument {
                     config["env"] = json!({});
                 }
                 let mut values = vec![
-                    ("/model", json!("glm-5.3")),
-                    ("/env/ANTHROPIC_MODEL", json!("glm-5.3")),
+                    ("/model", json!(model_id)),
+                    ("/env/ANTHROPIC_MODEL", json!(model_id)),
                     ("/env/ANTHROPIC_BASE_URL", json!(gateway)),
                     ("/env/ANTHROPIC_API_KEY", json!(key)),
                     ("/env/ANTHROPIC_AUTH_TOKEN", json!(key)),
-                    ("/env/ANTHROPIC_DEFAULT_HAIKU_MODEL", json!("glm-5.3")),
-                    ("/env/ANTHROPIC_DEFAULT_OPUS_MODEL", json!("glm-5.3")),
-                    ("/env/ANTHROPIC_DEFAULT_SONNET_MODEL", json!("glm-5.3")),
+                    ("/env/ANTHROPIC_DEFAULT_HAIKU_MODEL", json!(model_id)),
+                    ("/env/ANTHROPIC_DEFAULT_OPUS_MODEL", json!(model_id)),
+                    ("/env/ANTHROPIC_DEFAULT_SONNET_MODEL", json!(model_id)),
                 ];
                 if let Some(tokens) = model["context_window_tokens"].as_u64().filter(|v| *v > 0) {
                     values.push((
@@ -272,5 +276,34 @@ impl ConfigDocument {
                 })
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn single_model_configs_use_the_selected_catalogue_model() {
+        let models = vec![json!({"id":"glm-5.2"})];
+        let mut claude =
+            ConfigDocument::parse(ToolId::ClaudeCode, &None, Path::new("settings.json")).unwrap();
+        let result = claude
+            .apply("https://example.test", "test-key", &models)
+            .unwrap();
+        let config: Value = serde_json::from_slice(&result.bytes).unwrap();
+        assert_eq!(config["model"], "glm-5.2");
+        assert_eq!(config["env"]["ANTHROPIC_MODEL"], "glm-5.2");
+        assert_eq!(config["env"]["ANTHROPIC_DEFAULT_SONNET_MODEL"], "glm-5.2");
+        let mut codex =
+            ConfigDocument::parse(ToolId::Codex, &None, Path::new("config.toml")).unwrap();
+        let result = codex
+            .apply("https://example.test", "test-key", &models)
+            .unwrap();
+        let document = std::str::from_utf8(&result.bytes)
+            .unwrap()
+            .parse::<DocumentMut>()
+            .unwrap();
+        assert_eq!(document["model"].as_str(), Some("glm-5.2"));
     }
 }

@@ -12,16 +12,16 @@ Changing workspace or logging out does not rewrite existing Agent configuration.
 
 | Tool | Configured protocol | Model policy |
 | --- | --- | --- |
-| Claude Code | `ANTHROPIC_MESSAGES` | `glm-5.3` must advertise this endpoint; settings model and managed env overrides use GLM |
-| Codex CLI | `OPENAI_RESPONSES` | `glm-5.3` must advertise this endpoint; provider uses Responses |
-| WorkBuddy | `OPENAI_CHAT_COMPLETIONS` | All key-visible compatible models; preserves existing default preference |
-| DeepSeek Harness | `OPENAI_CHAT_COMPLETIONS` | All key-visible compatible models; profile and credential file are restored together |
-| OpenClaw | `OPENAI_CHAT_COMPLETIONS` | All key-visible compatible models; existing agent selection/allowlists stay in place |
-| OpenCode | `OPENAI_CHAT_COMPLETIONS` | All key-visible compatible models; root model selections stay in place; JSONC comments/trailing commas retained |
+| Claude Code | `ANTHROPIC_MESSAGES` | `glm-5.3` (test build: `glm-5.2`) must have `TEXT_GENERATION` in `model_types`; the connection uses the Anthropic Messages protocol |
+| Codex CLI | `OPENAI_RESPONSES` | `glm-5.3` (test build: `glm-5.2`) must have `TEXT_GENERATION` in `model_types`; provider uses Responses |
+| WorkBuddy | `OPENAI_CHAT_COMPLETIONS` | All key-visible text-generation models; preserves existing default preference |
+| DeepSeek Harness | `OPENAI_CHAT_COMPLETIONS` | All key-visible text-generation models; profile and credential file are restored together |
+| OpenClaw | `OPENAI_CHAT_COMPLETIONS` | All key-visible text-generation models; existing agent selection/allowlists stay in place |
+| OpenCode | `OPENAI_CHAT_COMPLETIONS` | All key-visible text-generation models; root model selections stay in place; JSONC comments/trailing commas retained |
 
 Connect obtains a device/tool key and its catalogue, then atomically publishes
 configuration and private ownership receipts. It stops if required models or
-protocols are unavailable. It performs no generation request. Multi-model import
+text-generation models are unavailable. It performs no generation request. Multi-model import
 adds choices without ranking them or selecting a preferred model.
 
 Retired model fields retain their original restoration baseline as history, while
@@ -64,14 +64,12 @@ global provider. These native tool behaviors require separate installed acceptan
 
 ## Operator coordination and acceptance
 
-Deploy the platform, website and gateway contracts together before shipping the
-matching desktop build. The platform's
+Deploy the platform and website contracts before shipping the matching desktop
+build. The platform's
 `docs/sql/temp/api_tokens_desktop_device_20261028.sql` adds `api_tokens.device_id`;
 this migration is prepared **NOT EXECUTED** and requires operator execution in the
-confirmed target environment. Gateway `/v1/models` must expose
-`supported_endpoints`; the old target response lacks that field and therefore
-cannot establish the required protocol compatibility. Do not infer readiness from
-HTTP 200. Desktop Redis keys use the platform's current
+confirmed target environment. Gateway `/v1/models` must expose `model_types` containing `TEXT_GENERATION` for the
+authenticated key. This identifies model type and does not itself prove a particular protocol call succeeds. Desktop Redis keys use the platform's current
 `RedisConstants.REDIS_PRE_KEY` namespace. No unprefixed desktop grants were deployed
 for this new feature, so no compatibility migration was added.
 
@@ -95,3 +93,25 @@ application/computer restart, newly installed tool redetection and actual termin
 or application launch for all six tools. Target environment authorization,
 permissions, balance/recharge, catalogue metadata and real paid protocol tests
 also remain pending until coordinated deployment and authorized acceptance.
+
+## Test environment build and deployment checks
+
+Build a separate test-named desktop bundle with `scripts/build-test-desktop.sh`.
+It requires the Tauri CLI and uses the domestic test WebAPI and gateway as
+compile-time defaults. Runtime `TOKEN_MARKET_CONSOLE_API_BASE_URL` and
+`TOKEN_MARKET_GATEWAY_API_BASE_URL` override those defaults. The test bundle
+shares the `tokenmarket://` protocol and Agent configuration with other builds;
+use a separate OS user or test machine for isolation.
+
+After deployment, run `python3 scripts/check-desktop-test-environment.py` to
+check the public WebAPI status, the three desktop pages, and gateway reachability.
+Add `--auth-create` to create one anonymous authorization request with a short
+expiry and check its browser origin. The script does not inspect deployment
+revision, authenticate a user, install the app, access a model, or test billing.
+Verify those separately. Use `--help` for endpoint overrides.
+
+To verify a test Key's actual gateway contract, save only the JSON response body
+from `/v1/models` to a private temporary file (never include its authorization
+header) and run `python3 scripts/check-model-catalogue.py <response.json>`. This
+checks `model_types` and the presence of the required text-generation model for that Key; it does not verify a protocol call. Access remains workspace- and
+Key-specific; no model call is made by the script.

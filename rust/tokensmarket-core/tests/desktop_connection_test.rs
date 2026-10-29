@@ -38,7 +38,7 @@ async fn gateway(status: u16, payload: Value) -> (String, tokio::task::JoinHandl
             let setup = request.starts_with("POST /api/desktop/connections/keys ")
                 || request.starts_with("GET /v1/models ");
             let response = if request.starts_with("GET /v1/models ") {
-                json!({"data":[{"id":"alpha","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"beta","supported_endpoints":["OPENAI_CHAT_COMPLETIONS"]},{"id":"glm-5.3","supported_endpoints":["ANTHROPIC_MESSAGES","OPENAI_RESPONSES"]}]})
+                json!({"data":[{"id":"alpha","model_types":["TEXT_GENERATION"]},{"id":"beta","model_types":["TEXT_GENERATION"]},{"id":"glm-5.3","model_types":["TEXT_GENERATION"]}]})
             } else if setup {
                 json!({"success":true,"data":{"api_key":"sk-original-connection","key_id":"9001","owner":{"id":"old-account","name":"Original Owner"},"bound_workspace":{"id":"42","name":"Original Billing"}}})
             } else {

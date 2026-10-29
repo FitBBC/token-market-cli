@@ -222,8 +222,8 @@ impl DesktopWorkspace {
             currency: currency.into(),
         })
     }
-    pub fn browser_url(&self, workspace: &str, action: &str) -> Result<String> {
-        id(workspace)?;
+    pub fn browser_url(&self, user: &str, action: &str) -> Result<String> {
+        id(user)?;
         let mut url = Url::parse(&self.web_url).context("浏览器站点地址无效")?;
         if (url.scheme() != "https"
             && !(url.scheme() == "http"
@@ -240,7 +240,7 @@ impl DesktopWorkspace {
         });
         url.set_query(None);
         url.set_fragment(None);
-        url.query_pairs_mut().append_pair("workspace_id", workspace);
+        url.query_pairs_mut().append_pair("user_id", user);
         if action != "recharge" {
             if !matches!(action, "profile" | "tokens" | "billing" | "workspaces") {
                 bail!("不可用的账号菜单");

@@ -9,7 +9,8 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_opener::OpenerExt;
 use tokensmarket_core::desktop::{
-    DesktopClient, DesktopLogin, DesktopSession, LoginAttempt, NativeDesktopCredentials,
+    CachedDesktopCredentials, DesktopClient, DesktopLogin, DesktopSession, LoginAttempt,
+    NativeDesktopCredentials,
 };
 
 use tokensmarket_core::setup::{run_setup, SetupProgress};
@@ -347,7 +348,9 @@ pub fn run() {
                 login: DesktopLogin::with_credentials(
                     app.path().app_local_data_dir()?.join("desktop-login"),
                     DesktopClient::new(api_base.clone()),
-                    Arc::new(NativeDesktopCredentials::new(&api_base)),
+                    Arc::new(CachedDesktopCredentials::new(Arc::new(
+                        NativeDesktopCredentials::new(&api_base),
+                    ))),
                 ),
                 session: Mutex::new(None),
                 error: Mutex::new(None),

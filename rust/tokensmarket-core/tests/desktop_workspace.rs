@@ -80,8 +80,8 @@ async fn switching_saves_shared_preference_and_keeps_decimal_parent_account_and_
     assert_eq!(balance.amount, "123456789.123456");
     assert_eq!(balance.currency, "CNY");
     assert_eq!(
-        workspace.browser_url("22", "recharge").unwrap(),
-        "https://console.example.test/desktop/recharge?workspace_id=22"
+        workspace.browser_url("1", "recharge").unwrap(),
+        "https://console.example.test/desktop/recharge?user_id=1"
     );
     assert_eq!(std::fs::read_to_string(agent).unwrap(), original_config);
     assert_eq!(std::fs::read(record).unwrap(), original_record);

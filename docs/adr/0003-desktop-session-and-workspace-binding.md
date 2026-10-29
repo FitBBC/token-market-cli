@@ -52,12 +52,12 @@ workspace.
 - Each tool offers connection, disconnection, and testing actions appropriate to
   its state. Tools not installed locally show a download action and cannot be
   connected.
-- Claude Code and Codex use `glm-5.3` under the requested product policy and show
+- Claude Code and Codex use `glm-5.3` (test build: `glm-5.2`) under the requested product policy and show
   that model on their cards.
 - Other tools obtain their model catalogue from `/v1/models` using the
-  connection's actual key and configure every returned model advertising support
-  for `OPENAI_CHAT_COMPLETIONS`. The service's supported-endpoint field is the
-  compatibility authority; a model's presence or name is not a substitute.
+  connection's actual key and configure every returned model whose `model_types`
+  contains `TEXT_GENERATION`. Model type identifies eligibility for configuration;
+  actual protocol behavior is verified separately through an explicit test.
 - Multi-model configuration includes the complete compatible catalogue without
   a preferred model or a GLM-first policy. The desktop connection flow does not
   introduce a default-model selection step. If no compatible models are returned,

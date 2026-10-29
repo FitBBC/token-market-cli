@@ -71,6 +71,50 @@ pub trait DesktopCredentialStore: Send + Sync {
     fn delete(&self) -> Result<()>;
 }
 
+/// Process-local cache around an OS credential store. Never persisted to an app file.
+/// Cache entries are committed only after successful OS operations; failures are retried.
+pub struct CachedDesktopCredentials {
+    store: Arc<dyn DesktopCredentialStore>,
+    cached: Mutex<Option<Option<String>>>,
+}
+impl CachedDesktopCredentials {
+    pub fn new(store: Arc<dyn DesktopCredentialStore>) -> Self {
+        Self {
+            store,
+            cached: Mutex::new(None),
+        }
+    }
+}
+impl DesktopCredentialStore for CachedDesktopCredentials {
+    fn read(&self) -> Result<Option<String>> {
+        let mut cached = self.cached.lock().expect("credential cache lock");
+        if let Some(value) = cached.as_ref() {
+            return Ok(value.clone());
+        }
+        let value = self.store.read()?;
+        *cached = Some(value.clone());
+        Ok(value)
+    }
+    fn write(&self, value: &str) -> Result<()> {
+        let mut cached = self.cached.lock().expect("credential cache lock");
+        if cached.as_ref().and_then(|value| value.as_deref()) == Some(value) {
+            return Ok(());
+        }
+        // An OS error may leave persistence uncertain; force the next read to consult it.
+        *cached = None;
+        self.store.write(value)?;
+        *cached = Some(Some(value.to_owned()));
+        Ok(())
+    }
+    fn delete(&self) -> Result<()> {
+        let mut cached = self.cached.lock().expect("credential cache lock");
+        *cached = None;
+        self.store.delete()?;
+        *cached = Some(None);
+        Ok(())
+    }
+}
+
 /// Production persistence: macOS Keychain / Windows Credential Store, with no plaintext fallback.
 /// Credentials are scoped to the configured platform, so test and production logins never overlap.
 pub struct NativeDesktopCredentials {
@@ -218,7 +262,16 @@ impl DesktopClient {
             .await
             .context("无法连接登录服务，请重试")?;
         let status = response.status();
-        // Auth payloads and response bodies must never enter errors or logs.
+        // Never surface authentication response bodies, even on failures.
+        if !status.is_success() {
+            if status.as_u16() == 404 {
+                bail!("登录服务接口不可用（HTTP 404），请检查服务部署或地址");
+            }
+            if status.is_server_error() {
+                bail!("登录服务暂时不可用（HTTP {}），请稍后重试", status.as_u16());
+            }
+            bail!("登录请求失败（HTTP {}），请重新登录", status.as_u16());
+        }
         let payload: serde_json::Value = response.json().await.context("登录服务返回无效响应")?;
         if !status.is_success() || payload.get("success").and_then(|v| v.as_bool()) == Some(false) {
             bail!("登录授权无效、已过期或已使用，请重新登录");
