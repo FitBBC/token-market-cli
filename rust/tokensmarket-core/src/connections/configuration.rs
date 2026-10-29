@@ -236,25 +236,29 @@ impl ConfigDocument {
                 if config.get("env").is_none() {
                     config["env"] = json!({});
                 }
-                let mut values = vec![
+                let mut values: Vec<(String, Value)> = vec![
                     ("/model", json!(model_id)),
-                    ("/env/ANTHROPIC_MODEL", json!(model_id)),
                     ("/env/ANTHROPIC_BASE_URL", json!(gateway)),
                     ("/env/ANTHROPIC_API_KEY", json!(key)),
                     ("/env/ANTHROPIC_AUTH_TOKEN", json!(key)),
-                    ("/env/ANTHROPIC_DEFAULT_HAIKU_MODEL", json!(model_id)),
-                    ("/env/ANTHROPIC_DEFAULT_OPUS_MODEL", json!(model_id)),
-                    ("/env/ANTHROPIC_DEFAULT_SONNET_MODEL", json!(model_id)),
-                ];
+                ]
+                .into_iter()
+                .map(|(pointer, value)| (pointer.into(), value))
+                .collect();
+                values.extend(
+                    crate::adapters::claude_model_environment(model_id)
+                        .into_iter()
+                        .map(|(name, value)| (format!("/env/{name}"), json!(value))),
+                );
                 if let Some(tokens) = model["context_window_tokens"].as_u64().filter(|v| *v > 0) {
                     values.push((
-                        "/env/CLAUDE_CODE_MAX_CONTEXT_TOKENS",
+                        "/env/CLAUDE_CODE_MAX_CONTEXT_TOKENS".into(),
                         json!(tokens.to_string()),
                     ));
                 }
                 let mut fields = vec![];
                 for (pointer, applied) in values {
-                    let before = config.pointer(pointer).cloned();
+                    let before = config.pointer(&pointer).cloned();
                     if pointer == "/model" {
                         config["model"] = applied.clone();
                     } else {
@@ -262,7 +266,7 @@ impl ConfigDocument {
                     }
                     fields.push(FieldReceipt {
                         retired: false,
-                        pointer: pointer.into(),
+                        pointer,
                         before,
                         applied,
                     });
@@ -282,6 +286,63 @@ impl ConfigDocument {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn claude_overwrites_every_model_alias_and_name_and_records_auto_mode_for_restore() {
+        let names = [
+            "ANTHROPIC_MODEL",
+            "ANTHROPIC_DEFAULT_FABLE_MODEL",
+            "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+            "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL",
+            "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+        ];
+        for model_id in ["glm-5.2", "glm-5.3"] {
+            let mut original = json!({"env":{"CLAUDE_CODE_AUTO_MODE_SERVER":"1","OTHER":"keep"},"permissions":{"allow":["Read"]}});
+            for name in names {
+                original["env"][name] = json!(format!("old-{name}"));
+            }
+            let before = Some(serde_json::to_vec(&original).unwrap());
+            let mut document =
+                ConfigDocument::parse(ToolId::ClaudeCode, &before, Path::new("settings.json"))
+                    .unwrap();
+            let applied = document
+                .apply(
+                    "https://example.test",
+                    "fixture-key",
+                    &[json!({"id":model_id})],
+                )
+                .unwrap();
+            let current: Value = serde_json::from_slice(&applied.bytes).unwrap();
+            for name in names {
+                assert_eq!(
+                    current["env"][name], model_id,
+                    "{name} must use selected model"
+                );
+                let pointer = format!("/env/{name}");
+                let receipt = applied
+                    .fields
+                    .iter()
+                    .find(|field| field.pointer == pointer)
+                    .unwrap();
+                assert_eq!(receipt.before, Some(original["env"][name].clone()));
+                assert_eq!(receipt.applied, json!(model_id));
+            }
+            assert_eq!(current["env"]["CLAUDE_CODE_AUTO_MODE_SERVER"], "0");
+            let mode = applied
+                .fields
+                .iter()
+                .find(|field| field.pointer == "/env/CLAUDE_CODE_AUTO_MODE_SERVER")
+                .unwrap();
+            assert_eq!(mode.before, Some(json!("1")));
+            assert_eq!(mode.applied, json!("0"));
+            assert_eq!(current["env"]["OTHER"], "keep");
+            assert_eq!(current["permissions"], original["permissions"]);
+        }
+    }
 
     #[test]
     fn single_model_configs_use_the_selected_catalogue_model() {

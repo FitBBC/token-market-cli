@@ -11,6 +11,22 @@ use crate::config::{
 };
 use crate::models::{resolve_model_capabilities, ToolConfig};
 
+/// Keep desktop connections and terminal setup aligned on every Claude model selector.
+pub(crate) fn claude_model_environment(model: &str) -> [(&'static str, &str); 10] {
+    [
+        ("ANTHROPIC_MODEL", model),
+        ("ANTHROPIC_DEFAULT_FABLE_MODEL", model),
+        ("ANTHROPIC_DEFAULT_FABLE_MODEL_NAME", model),
+        ("ANTHROPIC_DEFAULT_HAIKU_MODEL", model),
+        ("ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME", model),
+        ("ANTHROPIC_DEFAULT_OPUS_MODEL", model),
+        ("ANTHROPIC_DEFAULT_OPUS_MODEL_NAME", model),
+        ("ANTHROPIC_DEFAULT_SONNET_MODEL", model),
+        ("ANTHROPIC_DEFAULT_SONNET_MODEL_NAME", model),
+        ("CLAUDE_CODE_AUTO_MODE_SERVER", "0"),
+    ]
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ToolId {
@@ -318,9 +334,9 @@ impl Adapter {
                 current["model"] = json!(config.model);
                 current["env"]["ANTHROPIC_BASE_URL"] = json!(config.base_url);
                 current["env"]["ANTHROPIC_API_KEY"] = json!(config.api_key);
-                current["env"]["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = json!(config.model);
-                current["env"]["ANTHROPIC_DEFAULT_OPUS_MODEL"] = json!(config.model);
-                current["env"]["ANTHROPIC_DEFAULT_SONNET_MODEL"] = json!(config.model);
+                for (name, value) in claude_model_environment(&config.model) {
+                    current["env"][name] = json!(value);
+                }
                 current["env"]["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] =
                     json!(config.context_window_tokens.unwrap_or(200_000).to_string());
                 write_private_json(&config_path, &current)?;

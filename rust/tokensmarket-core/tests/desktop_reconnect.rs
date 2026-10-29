@@ -209,6 +209,82 @@ async fn reconnect_uses_current_account_then_retires_exact_old_key_and_disconnec
 }
 
 #[tokio::test]
+async fn claude_reconnect_fills_model_aliases_missing_from_old_receipts_and_restores_their_baseline(
+) {
+    let root = tempdir().unwrap();
+    let inv = inventory(root.path());
+    let path = root.path().join("settings.json");
+    let added = [
+        "ANTHROPIC_DEFAULT_FABLE_MODEL",
+        "ANTHROPIC_DEFAULT_FABLE_MODEL_NAME",
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME",
+        "ANTHROPIC_DEFAULT_OPUS_MODEL_NAME",
+        "ANTHROPIC_DEFAULT_SONNET_MODEL_NAME",
+        "CLAUDE_CODE_AUTO_MODE_SERVER",
+    ];
+    let mut original = json!({"env":{"OTHER":"keep"},"permissions":{"allow":["Read"]}});
+    for name in added {
+        original["env"][name] = json!(format!("original-{name}"));
+    }
+    std::fs::write(&path, original.to_string()).unwrap();
+    let server = platform(path.clone(), false).await;
+    let directory = root.path().join("records");
+    let manager = ConnectionManager::new(directory.clone(), server.url.clone(), server.url.clone());
+    manager
+        .connect(context("a"), ToolId::ClaudeCode, &inv, path.clone())
+        .await
+        .unwrap();
+    // Simulate a connection created by the previous release: these fields were never owned.
+    let store = directory.join("connections.json");
+    let mut records: Value = serde_json::from_slice(&std::fs::read(&store).unwrap()).unwrap();
+    records[0]["receipts"][0]["fields"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|field| {
+            !added
+                .iter()
+                .any(|name| field["pointer"] == format!("/env/{name}"))
+        });
+    std::fs::write(&store, records.to_string()).unwrap();
+    let mut current: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    for name in added {
+        current["env"][name] = original["env"][name].clone();
+    }
+    std::fs::write(&path, current.to_string()).unwrap();
+    manager
+        .reconnect(context("a"), ToolId::ClaudeCode, "1001", &inv, path.clone())
+        .await
+        .unwrap();
+    let applied: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    for name in added {
+        let expected = if name == "CLAUDE_CODE_AUTO_MODE_SERVER" {
+            "0"
+        } else {
+            "glm-5.3"
+        };
+        assert_eq!(applied["env"][name], expected, "{name}");
+        let record = manager.list().unwrap().remove(0);
+        let field = record.receipts[0]
+            .fields
+            .iter()
+            .find(|field| field.pointer == format!("/env/{name}"))
+            .unwrap();
+        assert_eq!(field.before, Some(original["env"][name].clone()));
+    }
+    manager
+        .disconnect(
+            ToolId::ClaudeCode,
+            "1002",
+            None,
+            DisconnectRequest::default(),
+        )
+        .await
+        .unwrap();
+    let restored: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(restored, original);
+}
+
+#[tokio::test]
 async fn reconnect_retires_metadata_no_longer_advertised_without_losing_original_restore_value() {
     let root = tempdir().unwrap();
     let inv = inventory(root.path());

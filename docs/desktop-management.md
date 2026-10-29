@@ -24,6 +24,13 @@ configuration and private ownership receipts. It stops if required models or
 text-generation models are unavailable. It performs no generation request. Multi-model import
 adds choices without ranking them or selecting a preferred model.
 
+Claude Code writes the selected model ID to `ANTHROPIC_MODEL` and every
+`ANTHROPIC_DEFAULT_{FABLE,HAIKU,OPUS,SONNET}_MODEL` / `_MODEL_NAME` field,
+and sets `CLAUDE_CODE_AUTO_MODE_SERVER` to the string `"0"`. Desktop Connect
+and Reconnect record these fields for restoration; terminal setup uses the same
+field mapping. Existing connections acquire the additional fields on Reconnect,
+using the original values of those newly managed fields as their restoration baseline.
+
 Retired model fields retain their original restoration baseline as history, while
 current configuration checks use only fields still actively managed. Removed
 fields are restored once, so subsequent unrelated edits remain user-owned. A model
