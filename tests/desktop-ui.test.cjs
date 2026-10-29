@@ -24,6 +24,12 @@ test('real UI renders safe native summaries, searches, navigates and fits deskto
     await p.locator('[data-tool-filter="available"]').click();assert.equal(await p.locator('.tool-row').count(),1);
     await p.locator('[data-tool-filter="all"]').click();
     for(const width of [1440,900,375]) { await p.setViewportSize({width,height:width===1440?1000:760});assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);assert.equal(await p.locator('#signed-in').isVisible(),true); }
+    await detail(p,'claude-code');
+    await p.getByRole('heading',{name:'已配置模型',exact:true}).waitFor();
+    assert.equal(await p.getByRole('heading',{name:'配置文件',exact:true}).count(),0);
+    assert.equal(await p.getByText('查看接入信息',{exact:true}).count(),0);
+    assert.equal(await p.locator('.configuration-editor').count(),0);
+    assert.equal((await calls(p,'tool_configuration_files')).length,0);
     await p.locator('.primary-nav [data-page="account"]').click();await p.getByRole('heading',{name:'可切换空间'}).waitFor();
     await p.locator('.primary-nav [data-page="help"]').click();await p.getByRole('heading',{name:'常见问题'}).waitFor();assert.deepEqual(f.errors,[]);
   } finally { await f.close(); }
@@ -99,104 +105,4 @@ test('a refreshed workspace invalidates a pending connect before any configurati
     await p.evaluate(async()=>{window.__fixture.current=window.__fixture.team;await window.TokenMarketWorkspace.refresh();});
     assert.equal(await p.locator('.connect-confirm-dialog').isVisible(),false);assert.equal((await calls(p,'connect_tool')).length,0);assert.deepEqual(f.errors,[]);
   }finally{await f.close();}
-});
-
-test('Agent details show recorded configuration files verbatim, refresh disk content and fit narrow views', async () => {
-  const raw = '{"apiKey":"sk-unmasked-fixture","note":"<img src=x onerror=alert(1)>"}\n' + 'long-value='.repeat(80);
-  const filePath = '/custom/profile/' + 'long-directory/'.repeat(8) + 'settings.json';
-  const f = await openFixture({configurationFiles:[{path:filePath,content:raw,error:null},{path:'/custom/credentials.yaml',content:null,error:'文件不存在，可能已被移动或删除'}]});
-  try {
-    const p=f.page;
-    assert.equal((await calls(p,'tool_configuration_files')).length,0);
-    await detail(p,'claude-code');await p.locator('.tool-configuration-file').first().waitFor();
-    assert.equal(await p.getByText('查看接入信息',{exact:true}).count(),0);
-    assert.equal(await p.getByText('协议',{exact:true}).count(),0);
-    assert.deepEqual((await calls(p,'tool_configuration_files'))[0].args,{tool:'claude-code',expectedKeyId:'receipt-claude-code'});
-    assert.equal(await p.locator('.tool-configuration-file').count(),2);
-    const file=p.locator('.tool-configuration-file').first();
-    assert.notEqual(await file.getAttribute('open'),null);
-    assert.equal(await p.locator('.tool-configuration-content').textContent(),raw);
-    assert.equal(await p.locator('.tool-configuration-content img').count(),0);
-    assert.match(await p.locator('.tool-configuration-error').innerText(),/文件不存在/);
-    for (const width of [1440,900,375]) {
-      await p.setViewportSize({width,height:760});
-      assert.equal(await p.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
-    }
-    // Inventory refresh must not discard the user's fold state or reading position.
-    await file.locator('summary').click();
-    await p.evaluate(()=>window.TokenMarketTools.refresh(true));
-    assert.equal(await file.getAttribute('open'),null);
-    await p.evaluate(()=>window.__fixture.configurationFiles=[{path:'/custom/profile/settings.json',content:'updated-key=sk-latest',error:null}]);
-    await p.getByRole('button',{name:'刷新内容',exact:true}).click();
-    await p.waitForFunction(()=>document.querySelector('.tool-configuration-content')?.textContent==='updated-key=sk-latest');
-    assert.equal(await p.locator('.tool-configuration-file').count(),1);
-    assert.equal((await calls(p,'connect_tool')).length,0);assert.equal((await calls(p,'test_tool_connection')).length,0);
-    assert.deepEqual(f.errors,[]);
-  } finally { await f.close(); }
-});
-
-test('configuration read errors can retry and late contents cannot return after logout', async () => {
-  const f=await openFixture();try {
-    const p=f.page;await p.evaluate(()=>window.__fixture.configurationError='连接已改变，请刷新后重试');
-    await detail(p,'codex');await p.getByText('读取失败：Error: 连接已改变，请刷新后重试',{exact:true}).waitFor();
-    assert.equal(await p.getByRole('button',{name:'刷新内容'}).isEnabled(),true);
-    await p.evaluate(()=>{window.__fixture.configurationError=null;window.__fixture.deferConfiguration=true;window.__fixture.configurationFiles=[{path:'/custom/config.toml',content:'late-private-key',error:null}];});
-    await p.getByRole('button',{name:'刷新内容'}).click();
-    await p.waitForFunction(()=>Boolean(window.__fixture.resolveConfiguration));
-    await p.locator('.workspace-profile-button').click();await p.locator('.workspace-dialog[open]').getByRole('button',{name:'退出登录',exact:true}).click();await p.locator('#login').waitFor();
-    await p.evaluate(()=>window.__fixture.resolveConfiguration());await p.waitForTimeout(50);
-    assert.equal(await p.locator('#tool-detail-region').textContent(),'');
-    assert.equal(await p.getByText('late-private-key',{exact:true}).count(),0);assert.deepEqual(f.errors,[]);
-  } finally { await f.close(); }
-});
-
-test('code viewer formats JSON without changing keys or numeric precision and restores the complete original', async () => {
-  const raw = '{"apiKey":"sk-plain","large":900719925474099312345,"duplicate":1,"duplicate":2,"items":[true,null,{},[]],"escaped":"a\\n\\\"b"}\r\n';
-  const f=await openFixture({configurationFiles:[{path:'/custom/settings.json',content:raw,error:null}]});
-  try {
-    const p=f.page;await detail(p,'claude-code');
-    const viewer=p.locator('.configuration-editor');await viewer.waitFor();
-    const content=viewer.locator('.tool-configuration-content');
-    assert.equal(await content.textContent(),raw);
-    assert.equal(await viewer.locator('.configuration-editor-gutter').textContent(),'1\n2');
-    assert.equal(await viewer.locator('.config-token-key').first().textContent(),'"apiKey"');
-    assert.equal(await viewer.locator('.config-token-string').first().textContent(),'"sk-plain"');
-    assert.equal(await content.evaluate(node=>node.isContentEditable),false);
-    const before=await calls(p,'tool_configuration_files');
-    await viewer.getByRole('button',{name:'格式化',exact:true}).click();
-    const formatted=await content.textContent();
-    assert.match(formatted,/\n  "large": 900719925474099312345,/);
-    assert.match(formatted,/"duplicate": 1,\n  "duplicate": 2/);
-    assert.match(formatted,/"items": \[\n    true,\n    null,\n    \{\},\n    \[\]\n  \]/);
-    assert.match(formatted,/"escaped": "a\\n\\\"b"/);
-    const lineCount=formatted.split('\n').length;
-    assert.equal(await viewer.locator('.configuration-editor-gutter').textContent(),Array.from({length:lineCount},(_,i)=>i+1).join('\n'));
-    assert.match(await viewer.locator('.configuration-editor-info').textContent(),new RegExp(`JSON · ${lineCount} 行 · 只读`));
-    await p.evaluate(()=>window.TokenMarketTools.refresh(true));
-    assert.equal(await content.textContent(),formatted);
-    await viewer.getByRole('button',{name:'原文',exact:true}).click();assert.equal(await content.textContent(),raw);
-    assert.deepEqual(await calls(p,'tool_configuration_files'),before);
-    assert.equal((await calls(p,'connect_tool')).length,0);assert.deepEqual(f.errors,[]);
-  } finally { await f.close(); }
-});
-
-test('non-JSON, invalid and empty files retain their full text and have accurate line numbers', async () => {
-  const files=[
-    {path:'/custom/config.toml',content:'[model_providers.tokensmarket]\nexperimental_bearer_token = "sk-plain"\nmodel = "glm-5.2"\n'},
-    {path:'/custom/profile.yml',content:'models:\n  - name: alpha\n# preserve this comment\napiKey: sk-plain'},
-    {path:'/custom/opencode.jsonc',content:'{\n  // keep comments\n  "provider": {},\n}\n'},
-    {path:'/custom/invalid.json',content:'{"incomplete": [\n'},
-    {path:'/custom/empty.json',content:''}
-  ].map(file=>({...file,error:null}));
-  const f=await openFixture({configurationFiles:files});
-  try {
-    const p=f.page;await detail(p,'codex');await p.locator('.configuration-editor').last().waitFor();
-    for (let i=0;i<files.length;i++) {
-      const editor=p.locator('.configuration-editor').nth(i);
-      assert.equal(await editor.locator('.tool-configuration-content').textContent(),files[i].content);
-      assert.equal(await editor.getByRole('button',{name:'格式化',exact:true}).isDisabled(),true);
-      assert.equal(await editor.locator('.configuration-editor-gutter').textContent(),Array.from({length:files[i].content.split('\n').length},(_,i)=>i+1).join('\n'));
-    }
-    assert.deepEqual(f.errors,[]);
-  } finally { await f.close(); }
 });

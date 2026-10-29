@@ -9,7 +9,7 @@ module.exports = async function openFixture(browser, options = {}) {
     const user = {id:'user-fixture',name:'界面测试账号',user_name:'界面测试账号',display_name:'界面测试账号',role:'USER',avatar_url:'avatar_0'};
     const personal = {id:'personal',name:'个人空间',type:'PERSONAL',defaultWorkspace:true};
     const team = {id:'team',name:'团队空间',type:'TEAM',status:'ACTIVE',roleCode:'TEAM_MEMBER'};
-    const fixture = window.__fixture = {calls:[],user,personal,team,current:personal,signedIn:options.signedIn !== false,pending:null,testPassed:true,conflicts:options.conflicts || false,inventoryError:options.inventoryError || false,workspaceError:options.workspaceError || false,configurationFiles:options.configurationFiles || [],events:{}};
+    const fixture = window.__fixture = {calls:[],user,personal,team,current:personal,signedIn:options.signedIn !== false,pending:null,testPassed:true,conflicts:options.conflicts || false,inventoryError:options.inventoryError || false,workspaceError:options.workspaceError || false,events:{}};
     const connection = (id, state = 'configured_untested') => ({state,owner:{id:user.id,name:user.name},boundWorkspace:{id:personal.id,name:personal.name},models:[options.model || 'server-model'],keyId:'receipt-'+id,protocol:'OPENAI_CHAT_COMPLETIONS',testResult:null});
     fixture.entries = [['claude-code','Claude Code'],['codex','Codex CLI'],['workbuddy','WorkBuddy'],['deepseek-harness','DeepSeek Harness'],['openclaw','OpenClaw'],['opencode','OpenCode']].map(([id,name],i) => ({id,name,installed:i<3,canConnect:i<3,connection:i<2?connection(id,i===0?'test_passed':options.changed?'configuration_changed':'configured_untested'):null}));
     if (options.multi) fixture.entries[2].connection = {...connection('workbuddy'),models:['server-model-a','server-model-b']};
@@ -28,7 +28,6 @@ module.exports = async function openFixture(browser, options = {}) {
         case 'desktop_tool_inventory': if(fixture.inventoryError)throw Error('工具读取失败');if(fixture.deferInventory)return new Promise(resolve=>fixture.resolveInventory=()=>resolve(clone(fixture.entries)));return clone(fixture.entries);
         case 'switch_desktop_workspace': fixture.current = args.workspaceId==='team'?team:personal;return clone(workspace());
         case 'prepare_tool_connect': return null;
-        case 'tool_configuration_files': if(fixture.configurationError)throw Error(fixture.configurationError);if(fixture.deferConfiguration)return new Promise(resolve=>fixture.resolveConfiguration=()=>resolve(clone(fixture.configurationFiles)));return clone(fixture.configurationFiles);
         case 'connect_tool': entry.connection=connection(entry.id);entry.connection.boundWorkspace={id:fixture.current.id,name:fixture.current.name};return clone(entry.connection);
         case 'prepare_tool_reconnect': return {oldOwner:clone(entry.connection.owner),oldWorkspace:clone(entry.connection.boundWorkspace),currentOwner:{id:user.id,name:user.name},currentWorkspace:{id:fixture.current.id,name:fixture.current.name}};
         case 'reconnect_tool': entry.connection={...connection(entry.id),boundWorkspace:{id:fixture.current.id,name:fixture.current.name}};return {connection:clone(entry.connection),oldKeyDisabled:true};

@@ -78,14 +78,6 @@ pub struct ConnectionSummary {
     pub protocol: String,
     pub test_result: Option<ConnectionTestResult>,
 }
-/// Explicit, read-only view of current managed files, including their unredacted contents.
-/// Never include this in inventory summaries or serialize the private restoration receipts.
-#[derive(Debug, Serialize)]
-pub struct ConfigurationFile {
-    pub path: PathBuf,
-    pub content: Option<String>,
-    pub error: Option<String>,
-}
 impl ConnectionRecord {
     pub fn summary(&self) -> ConnectionSummary {
         ConnectionSummary {
@@ -182,44 +174,6 @@ impl ConnectionManager {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
             Err(e) => Err(e).context("无法读取连接记录"),
         }
-    }
-    pub async fn configuration_files(
-        &self,
-        tool: ToolId,
-        expected_key_id: &str,
-    ) -> Result<Vec<ConfigurationFile>> {
-        let _guard = self.gate.lock().await;
-        let record = self
-            .list()?
-            .into_iter()
-            .find(|record| record.tool == tool && record.key_id == expected_key_id)
-            .ok_or_else(|| anyhow::anyhow!("连接已改变，请刷新后重试"))?;
-        let mut files = Vec::new();
-        for receipt in record.receipts {
-            if files
-                .iter()
-                .any(|file: &ConfigurationFile| file.path == receipt.path)
-            {
-                continue;
-            }
-            let (content, error) = match fs::read_to_string(&receipt.path) {
-                Ok(content) => (Some(content), None),
-                Err(error) => (
-                    None,
-                    Some(if error.kind() == std::io::ErrorKind::NotFound {
-                        "文件不存在，可能已被移动或删除".into()
-                    } else {
-                        format!("无法读取配置文件：{error}")
-                    }),
-                ),
-            };
-            files.push(ConfigurationFile {
-                path: receipt.path,
-                content,
-                error,
-            });
-        }
-        Ok(files)
     }
     pub fn device_id(&self) -> Result<String> {
         fs::create_dir_all(&self.directory)?;

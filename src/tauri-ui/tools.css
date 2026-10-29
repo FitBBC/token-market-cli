@@ -42,26 +42,6 @@
 .tool-detail-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(240px, 1fr); gap: 18px; }
 .tool-detail-grid > .sheet { align-self: start; }
 .tool-detail-grid > div { min-width: 0; }
-.tool-configuration-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-.tool-configuration-heading h2 { margin: 0; }
-.tool-configuration-heading button { flex-shrink: 0; }
-.tool-configuration-path { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; overflow-wrap: anywhere; }
-.tool-configuration-path::after { flex-shrink: 0; }
-.configuration-editor { margin: 6px 0 20px; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
-.configuration-editor-viewport { display: flex; position: relative; min-height: 220px; max-height: 480px; overflow: auto; color: var(--ink); font: 13px/1.8 ui-monospace, SFMono-Regular, Consolas, monospace; tab-size: 2; }
-.configuration-editor-viewport:focus-visible { outline: 3px solid #9cbbff; outline-offset: -3px; }
-.configuration-editor-gutter { position: sticky; left: 0; z-index: 1; flex: 0 0 auto; min-width: 50px; margin: 0; padding: 16px 12px; border-right: 1px solid var(--line); background: var(--surface); color: var(--muted); text-align: right; user-select: none; font: inherit; }
-.tool-configuration-content { flex: 1 0 auto; margin: 0; padding: 16px 20px; font: inherit; white-space: pre; }
-.configuration-editor-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 8px 12px; border-top: 1px solid var(--line); }
-.configuration-editor-toolbar button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; font-weight: 500; }
-.configuration-format-icon { font-size: 23px; line-height: 1; }
-.configuration-editor-info { margin-left: auto; padding: 0 10px; color: var(--muted); font-size: 12px; }
-.config-token-key { color: #0758a8; }
-.config-token-string { color: #ad241d; }
-.config-token-number { color: #126b49; }
-.config-token-literal { color: #7044a4; }
-.config-token-comment { color: #687568; font-style: italic; }
-.tool-configuration-error { color: var(--error); overflow-wrap: anywhere; }
 .tool-model-entry { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .tool-model-entry:last-child { border: 0; }
 .tool-model-entry code { font-size: 15px; color: #374c69; }

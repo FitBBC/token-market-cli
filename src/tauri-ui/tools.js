@@ -92,43 +92,10 @@
     return group;
   }
   function detailRow(label, value) { const row = text('div', '', 'info-row'); row.append(text('span', label), text('strong', value)); return row; }
-  function configurationSection(entry) {
-    const section = text('section', '', 'sheet tool-configuration');
-    section.dataset.tool = entry.id; section.dataset.keyId = entry.connection.keyId;
-    const heading = text('div', '', 'tool-configuration-heading');
-    heading.append(text('h2', '配置文件'));
-    const files = text('div', '', 'tool-configuration-files');
-    const status = text('p', '', 'caption'); status.setAttribute('role', 'status');
-    const current = generation;
-    const active = () => authenticated && current === generation && selectedTool === entry.id && section.isConnected;
-    async function load() {
-      reload.disabled = true; files.replaceChildren(); status.textContent = '正在读取配置文件…';
-      try {
-        const result = await invoke('tool_configuration_files', {tool:entry.id,expectedKeyId:entry.connection.keyId});
-        if (!active()) return;
-        status.textContent = result.length ? '当前文件内容 · 只读' : '此连接没有记录配置文件。';
-        result.forEach(file => {
-          const item = text('details', '', 'faq tool-configuration-file');
-          item.open = true;
-          item.append(text('summary', file.path, 'tool-configuration-path'));
-          if (file.error) item.append(text('p', file.error, 'tool-configuration-error'));
-          else item.append(window.TokenMarketConfigurationEditor.create(file.path, file.content));
-          files.append(item);
-        });
-      } catch (error) { if (active()) status.textContent = `读取失败：${String(error)}`; }
-      finally { if (active()) reload.disabled = false; }
-    }
-    const reload = actionButton('刷新内容', 'quiet', load); heading.append(reload);
-    section.append(heading, status, files);
-    // Defer until renderDetail has attached the section; stale responses never refill old views.
-    queueMicrotask(() => { if (active()) void load(); });
-    return section;
-  }
   function showDetail(entry) {
-    selectedTool = entry.id; renderDetail(entry, true); window.TokenMarketShell.show('detail', entry.name);
+    selectedTool = entry.id; renderDetail(entry); window.TokenMarketShell.show('detail', entry.name);
   }
-  function renderDetail(entry, reloadConfiguration = false) {
-    const previousConfiguration = detailRoot.querySelector('.tool-configuration');
+  function renderDetail(entry) {
     detailRoot.replaceChildren();
     const connection = entry.connection, legacy = connection?.state === 'legacy';
     const header = text('header', '', 'page-heading tool-detail-heading');
@@ -157,10 +124,6 @@
     const context = text('section', '', 'sheet'); context.append(text('h2', '连接归属'), detailRow('所属账号', legacy ? '未知（旧版记录）' : connection?.owner?.name || '尚未接入'), detailRow('计费空间', legacy ? '未知（旧版记录）' : connection?.boundWorkspace?.name || '尚未接入'), detailRow('安装状态', entry.installed ? '已安装' : '未安装'));
     context.append(text('p', '已有连接保留自己的计费空间。需要更换归属时，请确认重新接入。'));
     grid.append(left, context); detailRoot.append(grid);
-    if (connection && !legacy) {
-      const reuse = !reloadConfiguration && previousConfiguration?.dataset.tool === entry.id && previousConfiguration.dataset.keyId === connection.keyId;
-      detailRoot.append(reuse ? previousConfiguration : configurationSection(entry));
-    }
   }
   function render() {
     list.replaceChildren();

@@ -386,7 +386,6 @@ pub fn run() {
             connections::disconnect_tool,
             connections::test_tool_connection,
             connections::launch_connected_tool,
-            connections::tool_configuration_files,
             desktop_tool_inventory,
             prepare_tool_connect,
             download_tool,

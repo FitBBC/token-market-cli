@@ -1,9 +1,8 @@
 use tauri::{AppHandle, Manager};
 use tokensmarket_core::{
     connections::{
-        ConfigurationFile, ConnectContext, ConnectionManager, ConnectionSummary,
-        ConnectionTestRequest, ConnectionTestResult, DisconnectOutcome, DisconnectRequest,
-        ReconnectOutcome,
+        ConnectContext, ConnectionManager, ConnectionSummary, ConnectionTestRequest,
+        ConnectionTestResult, DisconnectOutcome, DisconnectRequest, ReconnectOutcome,
     },
     inventory::ToolInventory,
     ToolId,
@@ -39,19 +38,6 @@ fn current_context(
         return Err("登录已过期，请重新登录".into());
     }
     Ok((session, workspace))
-}
-/// Return only files recorded for this connection; callers cannot supply arbitrary paths.
-#[tauri::command]
-pub async fn tool_configuration_files(
-    app: AppHandle,
-    tool: String,
-    expected_key_id: String,
-) -> Result<Vec<ConfigurationFile>, String> {
-    let tool = tokensmarket_core::tool_id(&tool).map_err(|e| e.to_string())?;
-    app.state::<ConnectionManager>()
-        .configuration_files(tool, &expected_key_id)
-        .await
-        .map_err(|e| e.to_string())
 }
 /// Only safe identities cross the UI boundary; receipts and credentials remain private.
 #[derive(serde::Serialize)]
