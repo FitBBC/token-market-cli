@@ -3,6 +3,7 @@ name: Native validation
 on:
   push:
     branches:
+      - main
       - codex/desktop-session-integration
 
 permissions:

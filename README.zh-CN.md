@@ -31,13 +31,13 @@ rust/tokensmarket-cli/target/release/tokensmarket --version
 
 从 GitHub Releases 下载引导式桌面应用：
 
-- **macOS**：下载 `.dmg`，打开后把 **Token Market Setup** 拖入 **Applications**。
+- **macOS**：下载 `.dmg`，打开后把 **Token Market** 拖入 **Applications**。
 - **Windows**：下载 `x64-setup.exe` 安装器并运行。
 
 应用尚未使用 Apple Developer ID 签名和公证。如果 macOS 首次启动拦截，请执行：
 
 ```bash
-xattr -cr "/Applications/Token Market Setup.app"
+xattr -cr "/Applications/Token Market.app"
 ```
 
 然后正常打开应用。

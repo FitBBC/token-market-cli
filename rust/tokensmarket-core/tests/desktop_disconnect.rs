@@ -398,7 +398,11 @@ async fn newly_created_config_is_removed_only_when_empty_after_owned_fields_are_
     for unrelated in [false, true] {
         let root = tempdir().unwrap();
         let config = root.path().join("settings.json");
-        let (url, server) = platform(json!({"data":[{"id":"glm-5.3","model_types":["TEXT_GENERATION"]}]}), false).await;
+        let (url, server) = platform(
+            json!({"data":[{"id":"glm-5.3","model_types":["TEXT_GENERATION"]}]}),
+            false,
+        )
+        .await;
         let manager = ConnectionManager::new(
             root.path().join(".tokensmarket/desktop-connections"),
             url.clone(),
@@ -554,7 +558,11 @@ async fn version_one_fixture_recovers_only_owned_baseline_values_and_fails_close
     for missing_backup in [false, true] {
         let root = tempdir().unwrap();
         let config = root.path().join("settings.json");
-        let (url, server) = platform(json!({"data":[{"id":"glm-5.3","model_types":["TEXT_GENERATION"]}]}), false).await;
+        let (url, server) = platform(
+            json!({"data":[{"id":"glm-5.3","model_types":["TEXT_GENERATION"]}]}),
+            false,
+        )
+        .await;
         let directory = root.path().join(".tokensmarket/desktop-connections");
         let manager = ConnectionManager::new(directory.clone(), url.clone(), url);
         std::fs::write(
