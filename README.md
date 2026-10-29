@@ -1,216 +1,170 @@
-# Token Market Agent CLI
+# Token Market
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-Configure Token Market in popular AI agent tools from the terminal, or sign in once to the desktop app to manage six local tools. The terminal authorizes each setup; desktop login opens the platform Default Workspace, then Connect issues a separate device/tool key. See [desktop login](docs/desktop-login.md) and [desktop management](docs/desktop-management.md).
+Connect local AI agent tools to Token Market. Use the desktop app to manage connections, or configure a tool from the terminal.
 
-## Installation
+Before you start, install the agent tool you want to connect and have a Token Market account ready.
 
-### Terminal users
+## Desktop app
 
-With Node.js 20 or newer, use the npm entry point without installing Rust or the desktop app:
+### Install
+
+Download a desktop installer from [GitHub Releases](https://github.com/FitBBC/token-market-cli/releases):
+
+- **macOS**: open the `.dmg` and drag **Token Market** into **Applications**.
+- **Windows**: run the `x64-setup.exe` installer.
+
+### Sign in and connect a tool
+
+1. Open Token Market and click **使用浏览器登录** (Sign in with browser).
+2. Sign in in your browser, then click **Open Application** to return to the app.
+3. Confirm the current workspace. New connections will be billed to this workspace.
+4. Find your installed tool and click **接入** (Connect). Click **重新检测** (Detect again) if you just installed it.
+5. Reopen the agent tool and select the Token Market model as prompted.
+
+Connecting only configures the tool; it does not send model requests. To check a connection, click **测试** (Test) in its details, select a model if several are available, and confirm the possible charge.
+
+### Manage connections
+
+- **重新接入** (Reconnect): update a connection using the current account and workspace. To change its billing workspace, switch the current workspace first, then reconnect.
+- **取消接入** (Disconnect): restore settings managed by this connection and attempt to disable its Key. If settings conflict, follow the prompts to keep current values or restore the originals.
+- **Check billing workspace**: use the workspace shown in the connection details. Switching the current workspace or signing out does not change existing connections.
+
+If the app reports that an old Key was not disabled, check and disable it in the Token Market dashboard's Key management.
+
+## Terminal CLI
+
+### Install and run
+
+Requires **Node.js 20 or newer**. Run directly without installing the desktop app:
 
 ```bash
 npx --yes tokenmarket setup
-npx --yes tokenmarket setup claude-code
-npx --yes tokenmarket doctor
 ```
 
-Alternatively, install globally to use `tokenmarket` directly:
+Or install globally to use the `tokenmarket` command:
 
 ```bash
 npm install -g tokenmarket
 tokenmarket setup
 ```
 
-These commands require the current version to be published to npm first; having the launcher in this repository does not mean publication is complete. See [CLI npm releases](docs/cli-npm-release.md).
+The npm method requires a version published to npm. If the package or version cannot be found, use a desktop installer from [Releases](https://github.com/FitBBC/token-market-cli/releases).
 
-Prebuilt packages support macOS Apple Silicon / Intel, Windows x64, and Linux x64 / arm64 with glibc 2.35+ (for example, Ubuntu 22.04+). npm selects the platform binary automatically; keep optional dependencies enabled. Build from source for Alpine/musl or other architectures.
+The CLI supports macOS Apple Silicon / Intel, Windows x64, and Linux x64 / arm64 with glibc 2.35+ (such as Ubuntu 22.04+).
 
-Prerequisites:
+The examples below use the globally installed command. Without a global install, replace `tokenmarket` with `npx --yes tokenmarket`.
 
-- Install a supported AI agent tool before running setup. The CLI only configures tools it can detect on your computer.
-- To build the CLI from source, install a stable Rust toolchain with Cargo.
-- The `tokenmarket` executable must be on your `PATH`.
+### Connect a tool
 
-To install the executable from source:
+Run `tokenmarket setup`, choose a tool, sign in and select an authorization workspace in your browser, then return to the terminal and wait for setup to finish.
 
-```bash
-cargo install --path rust/tokensmarket-cli
-```
-
-Cargo normally installs it under `~/.cargo/bin`; make sure that directory is on your `PATH`. Alternatively, build without installing and invoke the binary by path:
-
-```bash
-cargo build --release --manifest-path rust/tokensmarket-cli/Cargo.toml
-rust/tokensmarket-cli/target/release/tokenmarket --version
-```
-
-### Desktop users
-
-Download the guided desktop app from GitHub Releases:
-
-- **macOS**: download the `.dmg`, open it, and drag **Token Market** into **Applications**.
-- **Windows**: download the `x64-setup.exe` installer and run it.
-
-The app is not yet signed and notarized with an Apple Developer ID. If macOS blocks the first launch, run:
-
-```bash
-xattr -cr "/Applications/Token Market.app"
-```
-
-Then open the app normally.
-
-## Desktop quick start
-
-Sign in through the browser and return with **Open Application**. View balance or switch the Current Workspace, then **Connect** an installed tool. Its card retains its owning account and Bound Workspace. Connect does not run a paid model request; **Test** is a separate action with a charge confirmation.
-
-## Terminal quick start
-
-Run setup without arguments to choose an installed tool interactively:
-
-```bash
-tokenmarket setup
-```
-
-Or configure a specific tool directly:
+You can also specify a tool directly:
 
 ```bash
 tokenmarket setup claude-code
-```
-
-After setup, check the local installation and gateway reachability:
-
-```bash
-tokenmarket doctor
-tokenmarket test claude-code
-```
-
-## Supported tools
-
-| Tool | Tool ID | Configuration location |
-| --- | --- | --- |
-| Claude Code | `claude-code` | `~/.claude/settings.json` |
-| Codex CLI | `codex` | `~/.codex/config.toml` |
-| WorkBuddy | `workbuddy` | `~/.workbuddy/models.json` |
-| DeepSeek Harness | `deepseek-harness` | `~/.dsh/profiles/<active-profile>/cordis.patch.yml` |
-| OpenClaw | `openclaw` | `~/.openclaw/openclaw.json` |
-| OpenCode | `opencode` | `~/.config/opencode/opencode.json` |
-
-The CLI detects each tool's actual configuration path. `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `DSH_HOME`, `DSH_ACTIVE_PROFILE`, `WORKBUDDY_CONFIG_PATH`, `OPENCLAW_CONFIG_PATH`, and `OPENCODE_CONFIG` can override the defaults above.
-
-## Commands
-
-### `tokenmarket setup [tool]`
-
-Authorize Token Market, create a CLI API key, write the selected tool's configuration, and run verification requests.
-
-Options:
-
-- `--model <preset>`: choose a model preset. Defaults to `recommended`.
-
-Examples:
-
-```bash
 tokenmarket setup codex
+```
+
+After setup, reopen the agent tool and select the Token Market model as prompted.
+
+**CLI setup automatically sends verification requests, which may incur model usage charges.**
+
+### Choose a model
+
+Use `--model` to select a preset. The default is `recommended`:
+
+```bash
 tokenmarket setup codex --model fast
 ```
 
-### `tokenmarket doctor [tool]`
+| Preset | Model |
+| --- | --- |
+| `recommended` (default) | `glm-5.3` |
+| `powerful` | `glm-5.3` |
+| `cheap` | `glm-5.3` |
+| `fast` | `deepseek-v4.1-flash` |
 
-Show the configured gateway URL, each tool's setup state, configuration path, and model API reachability. Passing a tool ID limits the report to that tool.
+### Check configuration and test a connection
 
-```bash
-tokenmarket doctor openclaw
-```
-
-### `tokenmarket test <tool>`
-
-Run configured request tests. By default, this runs all tests.
-
-Options:
-
-- `--models`: model list request
-- `--chat`: non-streaming chat request
-- `--stream`: streaming chat request
-- `--tool-call`: tool-call request
+Check configuration and model-list connectivity for all tools or one tool:
 
 ```bash
-tokenmarket test codex --models --chat
+tokenmarket doctor
+tokenmarket doctor codex
 ```
 
-### `tokenmarket keys`
+Send test requests for a configured tool:
 
-List API keys managed by this CLI. The command shows key names, key IDs, target tools, and creation times; it never prints the API key secret.
+```bash
+tokenmarket test codex
+tokenmarket test codex --models
+tokenmarket test codex --chat --stream
+```
+
+| Test option | Check |
+| --- | --- |
+| `--models` | Model list |
+| `--chat` | Non-streaming chat |
+| `--stream` | Streaming chat |
+| `--tool-call` | Tool calls |
+
+Without test options, all tests run. Chat, streaming and tool-call tests send real model requests and may incur charges.
+
+### View and disable Keys
 
 ```bash
 tokenmarket keys
 ```
 
-## Models
+Lists the names, IDs, target tools and creation times of Keys managed by this CLI, without displaying secrets. Disable Keys in the Token Market dashboard; running setup again does not automatically revoke the old Key.
 
-Setup uses a preset rather than asking users to choose a raw model name.
+## Supported tools
 
-| Preset | Model |
+Select a tool in the desktop app, or use its ID in terminal commands:
+
+| Tool | Terminal tool ID |
 | --- | --- |
-| `recommended` | `glm-5.3` |
-| `powerful` | `glm-5.3` |
-| `cheap` | `glm-5.3` |
-| `fast` | `deepseek-v4.1-flash` |
+| Claude Code | `claude-code` |
+| Codex CLI | `codex` |
+| WorkBuddy | `workbuddy` |
+| DeepSeek Harness | `deepseek-harness` |
+| OpenClaw | `openclaw` |
+| OpenCode | `opencode` |
 
-The default preset is `recommended`.
+## Troubleshooting
 
-## Security, backups, and revocation
+### macOS blocks the first launch
 
-- Terminal CLI authorization uses PKCE and a one-time local callback at `http://127.0.0.1`.
-- The terminal CLI browser authorization page lets the logged-in user choose the workspace that will own the CLI API key.
-- On Unix-like systems, adapter configuration and credential files are written with owner-only file permissions. On Windows, privacy relies on the user-profile and parent-directory ACLs.
-- Before modifying an existing configuration, the CLI copies it to `~/.tokensmarket/backups/`.
-- The local key registry is stored at `~/.tokensmarket/keys.json`; it records metadata only and does not replace the tool configuration.
-- Re-running setup replaces the local managed record for that tool. Revoke the actual key from the Token Market dashboard if you no longer want it to remain active.
-
-Desktop login instead uses PKCE and a one-time registered application-protocol callback, without choosing a workspace or issuing a tool key during login. Private desktop session storage, per-field configuration receipts, exact-key cleanup and testing limits are described in [desktop management](docs/desktop-management.md).
-
-## Architecture
-
-- `rust/tokensmarket-core`: shared setup domain. Contains tool adapters, PKCE authorization, configuration discovery and backups, the managed-key registry, model resolution, and gateway verification.
-- `rust/tokensmarket-cli`: the `tokenmarket` executable. It is a thin command-line shell over the shared core.
-- `npm`: the npx / npm launcher. Selects the platform's prebuilt Rust CLI and preserves arguments, terminal I/O and exit status.
-- `src-tauri`: the native desktop app. It is also a thin shell and invokes the same Rust core directly.
-- `src/tauri-ui`: the desktop app's HTML interface.
-
-## Development
-
-There is no root Cargo workspace, so Cargo commands must address the desired crate manifest directly.
-
-The npm launcher tests use Node.js's built-in test runner and require no npm dependency installation:
+The app is not yet signed and notarized with an Apple Developer ID. After confirming that the installer came from this repository's Releases, run:
 
 ```bash
-npm test
+xattr -cr "/Applications/Token Market.app"
 ```
+
+Then open the app again.
+
+### npm reports a missing platform package
+
+Installation requires optional dependencies. Reinstall with them enabled:
 
 ```bash
-cargo fmt --manifest-path rust/tokensmarket-core/Cargo.toml --all --check
-cargo test --manifest-path rust/tokensmarket-core/Cargo.toml --all-targets
-cargo test --manifest-path rust/tokensmarket-cli/Cargo.toml --all-targets
-cargo check --manifest-path src-tauri/Cargo.toml
+npm install -g --include=optional tokenmarket
 ```
 
-Build release binaries:
+### An installed tool is not detected
 
-```bash
-cargo build --release --manifest-path rust/tokensmarket-cli/Cargo.toml
-cargo tauri build
-```
+Click **重新检测** (Detect again) in the desktop app. For the CLI, make sure the tool can be launched from your terminal. Reopen the terminal if needed, then run setup again.
 
-`cargo tauri build` is only needed when producing the desktop app bundle locally; it is not part of normal Rust development checks.
+### A connected tool still uses its old settings
 
-## Platform contract
+Fully quit and reopen the tool. OpenClaw also needs a Gateway or session restart. OpenCode project settings may override its global configuration.
 
-The authorization API defaults to `https://console-api.tokensapi.cn` (`TOKEN_MARKET_CONSOLE_API_BASE_URL`); gateway requests default to `https://api.tokensapi.cn` (`TOKEN_MARKET_GATEWAY_API_BASE_URL`).
+### The desktop app reports changed configuration or disables testing
 
-The CLI expects these platform endpoints:
+Check whether the tool's settings were changed after connecting. Follow the prompts to repair the configuration or reconnect, then test again.
 
-- `POST /api/cli/sessions`
-- `POST /api/cli/exchange`
-- OpenAI-compatible model/chat endpoints under `/v1`
+### Find configuration backups made by the CLI
+
+The CLI backs up existing configuration to `~/.tokensmarket/backups/` before changing it. The setup output also shows the backup path.
