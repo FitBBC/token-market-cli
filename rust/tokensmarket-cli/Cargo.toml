@@ -5,7 +5,7 @@ edition = "2021"
 license = "UNLICENSED"
 
 [[bin]]
-name = "tokensmarket"
+name = "tokenmarket"
 path = "src/main.rs"
 
 [dependencies]

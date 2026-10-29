@@ -11,7 +11,7 @@ use tokensmarket_core::{
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "tokensmarket",
+    name = "tokenmarket",
     version,
     about = "Configure Token Market for popular AI agent tools"
 )]
@@ -177,10 +177,10 @@ async fn run() -> Result<()> {
             let id = tokensmarket_core::adapters::tool_id(&tool)?;
             let adapter = adapters::get_adapter(id);
             let key = tokensmarket_core::config::find_managed_key(id)?
-                .context("No managed configuration found. Run tokensmarket setup.")?;
+                .context("No managed configuration found. Run tokenmarket setup.")?;
             let config = adapter
                 .read_config()?
-                .context("Token Market configuration is missing. Run tokensmarket setup.")?;
+                .context("Token Market configuration is missing. Run tokenmarket setup.")?;
             let results = verify_token_market(&config, adapter.protocol, &tests).await?;
             for result in results {
                 println!(

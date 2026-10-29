@@ -8,13 +8,32 @@ Configure Token Market in popular AI agent tools from the terminal, or sign in o
 
 ### Terminal users
 
+With Node.js 20 or newer, use the npm entry point without installing Rust or the desktop app:
+
+```bash
+npx --yes tokenmarket setup
+npx --yes tokenmarket setup claude-code
+npx --yes tokenmarket doctor
+```
+
+Alternatively, install globally to use `tokenmarket` directly:
+
+```bash
+npm install -g tokenmarket
+tokenmarket setup
+```
+
+These commands require the current version to be published to npm first; having the launcher in this repository does not mean publication is complete. See [CLI npm releases](docs/cli-npm-release.md).
+
+Prebuilt packages support macOS Apple Silicon / Intel, Windows x64, and Linux x64 / arm64 with glibc 2.35+ (for example, Ubuntu 22.04+). npm selects the platform binary automatically; keep optional dependencies enabled. Build from source for Alpine/musl or other architectures.
+
 Prerequisites:
 
 - Install a supported AI agent tool before running setup. The CLI only configures tools it can detect on your computer.
 - To build the CLI from source, install a stable Rust toolchain with Cargo.
-- The `tokensmarket` executable must be on your `PATH`.
+- The `tokenmarket` executable must be on your `PATH`.
 
-The repository does not currently publish a standalone CLI package. Install the executable from source:
+To install the executable from source:
 
 ```bash
 cargo install --path rust/tokensmarket-cli
@@ -24,7 +43,7 @@ Cargo normally installs it under `~/.cargo/bin`; make sure that directory is on 
 
 ```bash
 cargo build --release --manifest-path rust/tokensmarket-cli/Cargo.toml
-rust/tokensmarket-cli/target/release/tokensmarket --version
+rust/tokensmarket-cli/target/release/tokenmarket --version
 ```
 
 ### Desktop users
@@ -51,20 +70,20 @@ Sign in through the browser and return with **Open Application**. View balance o
 Run setup without arguments to choose an installed tool interactively:
 
 ```bash
-tokensmarket setup
+tokenmarket setup
 ```
 
 Or configure a specific tool directly:
 
 ```bash
-tokensmarket setup claude-code
+tokenmarket setup claude-code
 ```
 
 After setup, check the local installation and gateway reachability:
 
 ```bash
-tokensmarket doctor
-tokensmarket test claude-code
+tokenmarket doctor
+tokenmarket test claude-code
 ```
 
 ## Supported tools
@@ -82,7 +101,7 @@ The CLI detects each tool's actual configuration path. `CLAUDE_CONFIG_DIR`, `COD
 
 ## Commands
 
-### `tokensmarket setup [tool]`
+### `tokenmarket setup [tool]`
 
 Authorize Token Market, create a CLI API key, write the selected tool's configuration, and run verification requests.
 
@@ -93,19 +112,19 @@ Options:
 Examples:
 
 ```bash
-tokensmarket setup codex
-tokensmarket setup codex --model fast
+tokenmarket setup codex
+tokenmarket setup codex --model fast
 ```
 
-### `tokensmarket doctor [tool]`
+### `tokenmarket doctor [tool]`
 
 Show the configured gateway URL, each tool's setup state, configuration path, and model API reachability. Passing a tool ID limits the report to that tool.
 
 ```bash
-tokensmarket doctor openclaw
+tokenmarket doctor openclaw
 ```
 
-### `tokensmarket test <tool>`
+### `tokenmarket test <tool>`
 
 Run configured request tests. By default, this runs all tests.
 
@@ -117,15 +136,15 @@ Options:
 - `--tool-call`: tool-call request
 
 ```bash
-tokensmarket test codex --models --chat
+tokenmarket test codex --models --chat
 ```
 
-### `tokensmarket keys`
+### `tokenmarket keys`
 
 List API keys managed by this CLI. The command shows key names, key IDs, target tools, and creation times; it never prints the API key secret.
 
 ```bash
-tokensmarket keys
+tokenmarket keys
 ```
 
 ## Models
@@ -155,13 +174,20 @@ Desktop login instead uses PKCE and a one-time registered application-protocol c
 ## Architecture
 
 - `rust/tokensmarket-core`: shared setup domain. Contains tool adapters, PKCE authorization, configuration discovery and backups, the managed-key registry, model resolution, and gateway verification.
-- `rust/tokensmarket-cli`: the `tokensmarket` executable. It is a thin command-line shell over the shared core.
+- `rust/tokensmarket-cli`: the `tokenmarket` executable. It is a thin command-line shell over the shared core.
+- `npm`: the npx / npm launcher. Selects the platform's prebuilt Rust CLI and preserves arguments, terminal I/O and exit status.
 - `src-tauri`: the native desktop app. It is also a thin shell and invokes the same Rust core directly.
 - `src/tauri-ui`: the desktop app's HTML interface.
 
 ## Development
 
 There is no root Cargo workspace, so Cargo commands must address the desired crate manifest directly.
+
+The npm launcher tests use Node.js's built-in test runner and require no npm dependency installation:
+
+```bash
+npm test
+```
 
 ```bash
 cargo fmt --manifest-path rust/tokensmarket-core/Cargo.toml --all --check

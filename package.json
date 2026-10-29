@@ -1,0 +1,39 @@
+{
+  "name": "tokenmarket",
+  "version": "0.1.0",
+  "description": "Configure Token Market in popular AI agent tools",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FitBBC/token-market-cli.git"
+  },
+  "bin": {
+    "tokenmarket": "npm/bin/tokenmarket.cjs"
+  },
+  "files": [
+    "npm/bin/",
+    "npm/platforms.cjs",
+    "README.zh-CN.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test tests/npm-launcher.test.cjs tests/npm-publish.test.cjs",
+    "build:cli": "cargo build --release --locked --manifest-path rust/tokensmarket-cli/Cargo.toml",
+    "package:platform": "node scripts/package-cli.cjs",
+    "test:package": "node scripts/smoke-npm-package.cjs",
+    "publish:cli": "node scripts/publish-npm.cjs"
+  },
+  "optionalDependencies": {
+    "tokenmarket-darwin-arm64": "0.1.0",
+    "tokenmarket-darwin-x64": "0.1.0",
+    "tokenmarket-win32-x64": "0.1.0",
+    "tokenmarket-linux-x64": "0.1.0",
+    "tokenmarket-linux-arm64": "0.1.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

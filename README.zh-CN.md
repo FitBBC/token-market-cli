@@ -8,13 +8,32 @@
 
 ### 终端用户
 
+安装 Node.js 20 或更新版本后，可通过 npm 分发入口运行 CLI，无需安装 Rust 或桌面 App：
+
+```bash
+npx --yes tokenmarket setup
+npx --yes tokenmarket setup claude-code
+npx --yes tokenmarket doctor
+```
+
+也可以全局安装，再直接使用 `tokenmarket` 命令：
+
+```bash
+npm install -g tokenmarket
+tokenmarket setup
+```
+
+上述命令需要先将当前版本发布到 npm；仓库中的启动器本身不代表已经完成发布。发布步骤见 [CLI npm 发布](docs/cli-npm-release.md)。
+
+支持 macOS Apple Silicon / Intel、Windows x64，以及使用 glibc 2.35+ 的 Linux x64 / arm64（如 Ubuntu 22.04+）。npm 自动安装当前平台的预编译 CLI，请保留 optional dependencies。Alpine/musl 或其他架构可从源码构建。
+
 先决条件：
 
 - 运行 setup 前，请先安装支持的 AI Agent 工具。CLI 只会配置它能检测到的工具。
 - 如果要从源码构建 CLI，请安装包含 Cargo 的稳定版 Rust 工具链。
-- `tokensmarket` 可执行文件必须在 `PATH` 中。
+- `tokenmarket` 可执行文件必须在 `PATH` 中。
 
-仓库当前没有发布独立的 CLI 安装包，请从源码安装可执行文件：
+从源码安装可执行文件：
 
 ```bash
 cargo install --path rust/tokensmarket-cli
@@ -24,7 +43,7 @@ Cargo 通常会安装到 `~/.cargo/bin`；请确认该目录在 `PATH` 中。也
 
 ```bash
 cargo build --release --manifest-path rust/tokensmarket-cli/Cargo.toml
-rust/tokensmarket-cli/target/release/tokensmarket --version
+rust/tokensmarket-cli/target/release/tokenmarket --version
 ```
 
 ### 桌面用户
@@ -51,20 +70,20 @@ xattr -cr "/Applications/Token Market.app"
 不带参数运行 setup，会交互式列出可安装工具：
 
 ```bash
-tokensmarket setup
+tokenmarket setup
 ```
 
 也可以直接指定工具：
 
 ```bash
-tokensmarket setup claude-code
+tokenmarket setup claude-code
 ```
 
 配置完成后，检查本地安装状态和网关连通性：
 
 ```bash
-tokensmarket doctor
-tokensmarket test claude-code
+tokenmarket doctor
+tokenmarket test claude-code
 ```
 
 ## 支持的工具
@@ -82,7 +101,7 @@ CLI 会检测每个工具的实际配置路径。`CLAUDE_CONFIG_DIR`、`CODEX_HO
 
 ## 命令
 
-### `tokensmarket setup [tool]`
+### `tokenmarket setup [tool]`
 
 授权 Token Market，创建 CLI API Key，写入所选工具配置，并执行验证请求。
 
@@ -93,19 +112,19 @@ CLI 会检测每个工具的实际配置路径。`CLAUDE_CONFIG_DIR`、`CODEX_HO
 示例：
 
 ```bash
-tokensmarket setup codex
-tokensmarket setup codex --model fast
+tokenmarket setup codex
+tokenmarket setup codex --model fast
 ```
 
-### `tokensmarket doctor [tool]`
+### `tokenmarket doctor [tool]`
 
 显示当前配置的网关地址、各工具的安装状态、配置文件路径以及模型 API 连通性。传入 tool ID 时只检查该工具。
 
 ```bash
-tokensmarket doctor openclaw
+tokenmarket doctor openclaw
 ```
 
-### `tokensmarket test <tool>`
+### `tokenmarket test <tool>`
 
 执行已配置的请求测试。不传测试参数时默认执行全部测试。
 
@@ -117,15 +136,15 @@ tokensmarket doctor openclaw
 - `--tool-call`：工具调用请求
 
 ```bash
-tokensmarket test codex --models --chat
+tokenmarket test codex --models --chat
 ```
 
-### `tokensmarket keys`
+### `tokenmarket keys`
 
 列出本 CLI 管理的 API Key。命令会显示 Key 名称、Key ID、目标工具和创建时间，不会输出 API Key 密钥。
 
 ```bash
-tokensmarket keys
+tokenmarket keys
 ```
 
 ## 模型
@@ -155,13 +174,20 @@ tokensmarket keys
 ## 架构
 
 - `rust/tokensmarket-core`：共享安装领域核心，包含工具适配器、PKCE 授权、配置发现与备份、Key 登记、模型解析、网关验证。
-- `rust/tokensmarket-cli`：`tokensmarket` 可执行文件，是共享核心之上的薄命令行外壳。
+- `rust/tokensmarket-cli`：`tokenmarket` 可执行文件，是共享核心之上的薄命令行外壳。
+- `npm`：npx / npm 启动器，选择当前平台的预编译 Rust CLI，透传命令参数、终端输入输出与退出码。
 - `src-tauri`：原生桌面应用，同样是薄外壳，直接调用同一个 Rust core。
 - `src/tauri-ui`：桌面应用的 HTML 界面。
 
 ## 开发
 
 仓库根目录没有 Cargo workspace，因此 Cargo 命令需要显式指定目标 crate 的 manifest。
+
+npm 启动器测试使用 Node.js 内置测试工具，无需安装 npm 依赖：
+
+```bash
+npm test
+```
 
 ```bash
 cargo fmt --manifest-path rust/tokensmarket-core/Cargo.toml --all --check
