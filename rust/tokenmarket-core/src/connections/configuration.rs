@@ -29,6 +29,42 @@ pub(super) struct PreparedConfiguration {
 }
 
 impl ConfigDocument {
+    pub fn credential(&self, gateway: &str) -> Result<Option<String>> {
+        let (base, key) = match self {
+            Self::Claude(value) => (
+                value
+                    .pointer("/env/ANTHROPIC_BASE_URL")
+                    .and_then(Value::as_str),
+                value
+                    .pointer("/env/ANTHROPIC_AUTH_TOKEN")
+                    .and_then(Value::as_str),
+            ),
+            Self::Codex(value) => (
+                value
+                    .get("model_providers")
+                    .and_then(|v| v.get("tokenmarket"))
+                    .and_then(|v| v.get("base_url"))
+                    .and_then(|v| v.as_str()),
+                value
+                    .get("model_providers")
+                    .and_then(|v| v.get("tokenmarket"))
+                    .and_then(|v| v.get("experimental_bearer_token"))
+                    .and_then(|v| v.as_str()),
+            ),
+            Self::MultiModel(value) => return value.credential(gateway),
+            Self::Harness(value) => {
+                return Ok(value.as_ref().and_then(|value| value.credential(gateway)))
+            }
+        };
+        Ok(base
+            .filter(|base| {
+                base.trim_end_matches('/') == gateway.trim_end_matches('/')
+                    || base.trim_end_matches('/') == format!("{}/v1", gateway.trim_end_matches('/'))
+            })
+            .and_then(|_| key)
+            .filter(|key| !key.is_empty())
+            .map(str::to_owned))
+    }
     pub fn parse(tool: ToolId, before: &Option<Vec<u8>>, path: &Path) -> Result<Self> {
         if tool == ToolId::OpenCode
             && matches!(

@@ -15,6 +15,15 @@ use url::Url;
 
 pub const CALLBACK_URL: &str = "tokenmarket://auth/callback";
 
+#[derive(Debug)]
+struct SessionRejected;
+impl std::fmt::Display for SessionRejected {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "共享登录已失效，请重新登录")
+    }
+}
+impl std::error::Error for SessionRejected {}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DesktopIdentity {
     pub id: String,
@@ -62,6 +71,8 @@ struct PendingLogin {
     attempt: LoginAttempt,
     state: String,
     verifier: String,
+    #[serde(default)]
+    credential_fingerprint: Option<String>,
 }
 
 /// OS credential storage is the external persistence seam. Implementations must not log secrets.
@@ -118,30 +129,36 @@ impl DesktopCredentialStore for CachedDesktopCredentials {
 /// Production persistence: macOS Keychain / Windows Credential Store, with no plaintext fallback.
 /// Credentials are scoped to the configured platform, so test and production logins never overlap.
 pub struct NativeDesktopCredentials {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+    service: &'static str,
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     account: String,
 }
 impl NativeDesktopCredentials {
     pub fn new(platform_url: &str) -> Self {
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        Self::scoped("cn.tokenmarket.setup.desktop-session", platform_url)
+    }
+    pub fn scoped(service: &'static str, scope: &str) -> Self {
+        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
         {
             use sha2::{Digest, Sha256};
             Self {
+                service,
                 account: format!(
                     "platform-{:x}",
-                    Sha256::digest(platform_url.trim_end_matches('/').as_bytes())
+                    Sha256::digest(scope.trim_end_matches('/').as_bytes())
                 ),
             }
         }
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
         {
-            let _ = platform_url;
+            let _ = (service, scope);
             Self {}
         }
     }
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     fn entry(&self) -> Result<keyring::Entry> {
-        keyring::Entry::new("cn.tokenmarket.setup.desktop-session", &self.account)
+        keyring::Entry::new(self.service, &self.account)
             .map_err(|_| anyhow::anyhow!("无法访问系统私密存储"))
     }
 }
@@ -155,7 +172,11 @@ impl DesktopCredentialStore for NativeDesktopCredentials {
                 Err(_) => bail!("无法读取系统私密存储中的桌面会话"),
             }
         }
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        #[cfg(target_os = "linux")]
+        {
+            crate::credential_vault::linux::read(self.service, &self.account)
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
         {
             bail!("当前系统不支持桌面会话私密存储")
         }
@@ -167,7 +188,11 @@ impl DesktopCredentialStore for NativeDesktopCredentials {
                 .set_password(value)
                 .map_err(|_| anyhow::anyhow!("无法保存桌面会话到系统私密存储"))
         }
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        #[cfg(target_os = "linux")]
+        {
+            crate::credential_vault::linux::write(self.service, &self.account, value)
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
         {
             let _ = value;
             bail!("当前系统不支持桌面会话私密存储")
@@ -181,7 +206,11 @@ impl DesktopCredentialStore for NativeDesktopCredentials {
                 Err(_) => bail!("无法移除系统私密存储中的桌面会话"),
             }
         }
-        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        #[cfg(target_os = "linux")]
+        {
+            crate::credential_vault::linux::delete(self.service, &self.account)
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
         {
             bail!("当前系统不支持桌面会话私密存储")
         }
@@ -222,7 +251,10 @@ impl DesktopClient {
     pub fn new(base_url: String) -> Self {
         Self {
             base_url,
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .expect("client HTTP configuration"),
         }
     }
 
@@ -240,8 +272,24 @@ impl DesktopClient {
             .await
             .context("无法验证桌面会话，请重新登录")?;
         let status = response.status();
+        if matches!(status.as_u16(), 401 | 403) {
+            return Err(SessionRejected.into());
+        }
         let payload: serde_json::Value = response.json().await.context("会话服务返回无效响应")?;
         if !status.is_success() || payload.get("success").and_then(|v| v.as_bool()) == Some(false) {
+            if status.is_success()
+                && matches!(
+                    payload["message"].as_str(),
+                    Some(
+                        "revoked"
+                            | "token invalid"
+                            | "Token无效"
+                            | "desktop session expired or revoked"
+                    )
+                )
+            {
+                return Err(SessionRejected.into());
+            }
             bail!("桌面会话失效或无法续期，请重新登录");
         }
         serde_json::from_value(payload.get("data").cloned().unwrap_or(payload))
@@ -311,9 +359,19 @@ impl DesktopLogin {
     }
 
     /// Restore only after the platform has accepted and renewed the private credential.
+    pub fn shared_session(&self) -> Result<Option<DesktopSession>> {
+        self.credentials
+            .read()?
+            .map(|saved| {
+                serde_json::from_str::<DesktopSession>(&saved).context("保存的客户端会话无效")
+            })
+            .transpose()
+    }
+
     pub async fn restore(&self) -> Result<Option<DesktopSession>> {
         let (saved, generation) = {
             let _gate = self.gate.lock().expect("desktop login lock");
+            let _process = self.process_lock()?;
             (
                 self.credentials.read()?,
                 self.generation.load(Ordering::SeqCst),
@@ -322,6 +380,7 @@ impl DesktopLogin {
         let Some(saved) = saved else {
             return Ok(None);
         };
+        let original_saved = saved.clone();
         let renewal = async {
             let mut session: DesktopSession = serde_json::from_str(&saved)
                 .map_err(|_| anyhow::anyhow!("保存的桌面会话无效，请重新登录"))?;
@@ -352,8 +411,12 @@ impl DesktopLogin {
         }
         .await;
         let _gate = self.gate.lock().expect("desktop login lock");
+        let _process = self.process_lock()?;
         if generation != self.generation.load(Ordering::SeqCst) {
             bail!("桌面会话已变更");
+        }
+        if self.credentials.read()?.as_deref() != Some(original_saved.as_str()) {
+            bail!("其他客户端已改变登录，请刷新后重试")
         }
         match renewal {
             Ok(session) => {
@@ -361,7 +424,12 @@ impl DesktopLogin {
                 Ok(Some(session))
             }
             Err(error) => {
-                self.credentials.delete()?;
+                if error.downcast_ref::<SessionRejected>().is_some()
+                    || serde_json::from_str::<DesktopSession>(&original_saved)
+                        .map_or(true, |session| !session.is_valid())
+                {
+                    self.credentials.delete()?;
+                }
                 Err(error)
             }
         }
@@ -372,6 +440,7 @@ impl DesktopLogin {
     pub async fn logout(&self) -> Result<bool> {
         let saved = {
             let _gate = self.gate.lock().expect("desktop login lock");
+            let _process = self.process_lock()?;
             self.cancel_locked()?;
             let saved = self.credentials.read()?;
             self.credentials
@@ -387,8 +456,14 @@ impl DesktopLogin {
         };
         Ok(self
             .client
-            .authenticated::<bool>("/api/desktop/auth/logout", &session.session_token)
+            .authenticated::<serde_json::Value>("/api/desktop/auth/logout", &session.session_token)
             .await
+            .map(|value| {
+                value
+                    .as_bool()
+                    .or_else(|| value["logged_out"].as_bool())
+                    .unwrap_or(false)
+            })
             .unwrap_or(false))
     }
 
@@ -396,6 +471,7 @@ impl DesktopLogin {
     /// A stale callback must never erase a newer account's credential.
     pub fn discard_unaccepted_session(&self, session: &DesktopSession) -> Result<()> {
         let _gate = self.gate.lock().expect("desktop login lock");
+        let _process = self.process_lock()?;
         if let Some(saved) = self.credentials.read()? {
             let saved: DesktopSession =
                 serde_json::from_str(&saved).map_err(|_| anyhow::anyhow!("保存的桌面会话无效"))?;
@@ -406,12 +482,26 @@ impl DesktopLogin {
         Ok(())
     }
 
+    pub(crate) fn process_lock(&self) -> Result<fs::File> {
+        fs::create_dir_all(&self.directory)?;
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(self.directory.join("operation.lock"))?;
+        file.try_lock()
+            .map_err(|_| anyhow::anyhow!("另一个入口正在更新共享登录，请稍后重试"))?;
+        Ok(file)
+    }
+
     fn pending_path(&self) -> PathBuf {
         self.directory.join("pending-login.json")
     }
 
     pub fn pending(&self) -> Result<Option<LoginAttempt>> {
         let _gate = self.gate.lock().expect("desktop login lock");
+        let _process = self.process_lock()?;
         if !self.pending_path().exists() {
             return Ok(None);
         }
@@ -425,15 +515,25 @@ impl DesktopLogin {
     }
 
     pub async fn begin(&self) -> Result<LoginAttempt> {
+        self.begin_request(false).await
+    }
+
+    pub async fn begin_remote(&self) -> Result<LoginAttempt> {
+        self.begin_request(true).await
+    }
+
+    async fn begin_request(&self, remote: bool) -> Result<LoginAttempt> {
         let generation = {
             let _gate = self.gate.lock().expect("desktop login lock");
+            let _process = self.process_lock()?;
             self.cancel_locked()?;
             self.generation.load(Ordering::SeqCst)
         };
+        let credential_fingerprint = self.credentials.read()?.as_deref().map(session_fingerprint);
         let pkce = create_pkce();
         let state = create_pkce().code_verifier;
         let attempt: LoginAttempt = self.client.post("/api/desktop/auth/sessions", serde_json::json!({
-            "state": state, "code_challenge": pkce.code_challenge, "code_challenge_method":"S256"
+            "state": state, "code_challenge": pkce.code_challenge, "code_challenge_method":"S256", "remote": remote
         })).await?;
         let url = Url::parse(&attempt.authorize_url).context("登录链接无效")?;
         if url.scheme() != "https"
@@ -443,6 +543,7 @@ impl DesktopLogin {
             bail!("登录链接必须使用安全连接");
         }
         let _gate = self.gate.lock().expect("desktop login lock");
+        let _process = self.process_lock()?;
         if generation != self.generation.load(Ordering::SeqCst) {
             bail!("登录已取消");
         }
@@ -462,6 +563,7 @@ impl DesktopLogin {
                     attempt: attempt.clone(),
                     state,
                     verifier: pkce.code_verifier,
+                    credential_fingerprint,
                 },
             )?;
         }
@@ -477,14 +579,50 @@ impl DesktopLogin {
                     attempt: attempt.clone(),
                     state,
                     verifier: pkce.code_verifier,
+                    credential_fingerprint,
                 },
             )?;
         }
         Ok(attempt)
     }
 
+    pub async fn poll_remote(&self) -> Result<Option<DesktopSession>> {
+        let (pending, generation) = {
+            let _gate = self.gate.lock().expect("client login lock");
+            let _process = self.process_lock()?;
+            let pending: PendingLogin =
+                serde_json::from_slice(&fs::read(self.pending_path())?).context("登录请求无效")?;
+            if DateTime::parse_from_rfc3339(&pending.attempt.expires_at)? <= Utc::now() {
+                bail!("登录请求已过期，请重新登录")
+            }
+            (pending, self.generation.load(Ordering::SeqCst))
+        };
+        let value: serde_json::Value = self.client.post("/api/desktop/auth/remote-claim", serde_json::json!({
+            "session_id":pending.attempt.session_id,"state":pending.state,"code_verifier":pending.verifier
+        })).await?;
+        if value["status"] == "pending" {
+            return Ok(None);
+        }
+        let session: DesktopSession = serde_json::from_value(value).context("登录响应不完整")?;
+        if !session.is_valid() {
+            bail!("登录会话无效")
+        }
+        let _gate = self.gate.lock().expect("client login lock");
+        let _process = self.process_lock()?;
+        if generation != self.generation.load(Ordering::SeqCst)
+            || self.credentials.read()?.as_deref().map(session_fingerprint)
+                != pending.credential_fingerprint
+        {
+            bail!("登录已取消或被其他客户端更改")
+        }
+        self.credentials.write(&serde_json::to_string(&session)?)?;
+        fs::remove_file(self.pending_path())?;
+        Ok(Some(session))
+    }
+
     pub fn cancel(&self) -> Result<()> {
         let _gate = self.gate.lock().expect("desktop login lock");
+        let _process = self.process_lock()?;
         self.cancel_locked()
     }
 
@@ -521,6 +659,7 @@ impl DesktopLogin {
         }
         let (pending, code, generation) = {
             let _gate = self.gate.lock().expect("desktop login lock");
+            let _process = self.process_lock()?;
             let generation = self.generation.load(Ordering::SeqCst);
             let pending: PendingLogin = serde_json::from_slice(
                 &fs::read(self.pending_path()).context("没有等待中的登录请求，请重新登录")?,
@@ -558,6 +697,7 @@ impl DesktopLogin {
             )
             .await?;
         let _gate = self.gate.lock().expect("desktop login lock");
+        let _process = self.process_lock()?;
         if generation != self.generation.load(Ordering::SeqCst) {
             bail!("登录已取消");
         }
@@ -568,7 +708,17 @@ impl DesktopLogin {
         {
             bail!("登录会话无效，请重新登录");
         }
+        if self.credentials.read()?.as_deref().map(session_fingerprint)
+            != pending.credential_fingerprint
+        {
+            bail!("其他客户端已改变登录，请重新操作");
+        }
         self.credentials.write(&serde_json::to_string(&session)?)?;
         Ok(session)
     }
+}
+
+fn session_fingerprint(value: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(value.as_bytes()))
 }

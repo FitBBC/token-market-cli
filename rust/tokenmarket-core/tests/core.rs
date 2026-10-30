@@ -25,19 +25,6 @@ fn rejects_unsupported_tools() {
 }
 
 #[test]
-fn resolves_model_presets() {
-    assert_eq!(
-        tokenmarket_core::models::resolve_model(None).unwrap(),
-        "glm-5.3"
-    );
-    assert_eq!(
-        tokenmarket_core::models::resolve_model(Some("fast")).unwrap(),
-        "deepseek-v4.1-flash"
-    );
-    assert!(tokenmarket_core::models::resolve_model(Some("unknown")).is_err());
-}
-
-#[test]
 fn serializes_every_tool_with_the_server_contract_id() {
     for (input, expected) in [
         ("claude-code", "claude-code"),
@@ -55,55 +42,14 @@ fn serializes_every_tool_with_the_server_contract_id() {
 }
 
 #[test]
-fn serializes_authorization_requests_with_legacy_camel_case_fields() {
-    let tool = tool_id("claude-code").unwrap();
-    let session = tokenmarket_core::auth::SessionRequest {
-        tool,
-        redirect_port: 12345,
-        code_challenge: "challenge",
-        code_challenge_method: "S256",
-    };
-    let value = serde_json::to_value(&session).unwrap();
-    assert_eq!(value["tool"], "claude-code");
-    assert_eq!(value["redirectPort"], 12345);
-    assert_eq!(value["codeChallenge"], "challenge");
-    assert_eq!(value["codeChallengeMethod"], "S256");
-}
-
-#[tokio::test]
-async fn callback_server_renders_success_page_and_returns_code() {
-    use std::time::Duration;
-
-    let server = tokenmarket_core::auth::CallbackServer::bind()
-        .await
-        .unwrap();
-    let port = server.port();
-    let handle = tokio::spawn(async move { server.wait_for_result().await });
-
-    let response = reqwest::get(format!(
-        "http://127.0.0.1:{port}/callback?code=test-code&state=test-state"
-    ))
-    .await
-    .unwrap();
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
-    assert!(response
-        .headers()
-        .get("content-security-policy")
-        .unwrap()
-        .to_str()
-        .unwrap()
-        .contains("default-src 'none'"));
-    let body = response.text().await.unwrap();
-    assert!(body.contains("<strong>授权完成。</strong>"));
-    assert!(body.contains("创建 API Key"));
-    assert!(body.contains("写入工具配置"));
-    assert!(body.contains("发送测试请求"));
-
-    let result = tokio::time::timeout(Duration::from_secs(2), handle)
-        .await
-        .unwrap()
-        .unwrap()
-        .unwrap();
-    assert_eq!(result.code, "test-code");
-    assert_eq!(result.state.as_deref(), Some("test-state"));
+fn generates_independent_pkce_verifiers_with_matching_challenges() {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+    use sha2::{Digest, Sha256};
+    let first = tokenmarket_core::auth::create_pkce();
+    let second = tokenmarket_core::auth::create_pkce();
+    assert_ne!(first.code_verifier, second.code_verifier);
+    assert_eq!(
+        first.code_challenge,
+        URL_SAFE_NO_PAD.encode(Sha256::digest(first.code_verifier.as_bytes()))
+    );
 }

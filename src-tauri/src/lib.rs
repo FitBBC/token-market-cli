@@ -1,6 +1,5 @@
 mod connections;
 mod workspace;
-use serde::Serialize;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex,
@@ -9,31 +8,16 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_opener::OpenerExt;
 use tokenmarket_core::desktop::{
-    CachedDesktopCredentials, DesktopClient, DesktopLogin, DesktopSession, LoginAttempt,
-    NativeDesktopCredentials,
+    DesktopClient, DesktopLogin, DesktopSession, LoginAttempt, NativeDesktopCredentials,
 };
-
-use tokenmarket_core::setup::{run_setup, SetupProgress};
-
-#[derive(Clone, Serialize, Default)]
-struct SetupStatus {
-    running: bool,
-    authorize_url: Option<String>,
-    error: Option<String>,
-    outcome: Option<serde_json::Value>,
-}
-
-#[derive(Default)]
-struct SetupState {
-    status: Mutex<SetupStatus>,
-}
 
 // Read-only catalogue and installation gate shared with subsequent connection commands.
 #[tauri::command]
-fn desktop_tool_inventory() -> Result<Vec<tokenmarket_core::inventory::ToolInventoryEntry>, String>
-{
+fn desktop_tool_inventory(
+    app: AppHandle,
+) -> Result<Vec<tokenmarket_core::inventory::ToolInventoryEntry>, String> {
     tokenmarket_core::inventory::ToolInventory::current()
-        .list()
+        .list_with_connections(&app.state::<tokenmarket_core::connections::ConnectionManager>())
         .map_err(|error| error.to_string())
 }
 
@@ -54,99 +38,6 @@ fn download_tool(app: AppHandle, tool: String) -> Result<(), String> {
             None::<&str>,
         )
         .map_err(|_| "无法打开官网下载页面，请稍后重试".into())
-}
-
-#[tauri::command]
-fn tool_status(tool: String) -> serde_json::Value {
-    match tokenmarket_core::adapters::tool_id(&tool) {
-        Ok(id) => {
-            let adapter = tokenmarket_core::adapters::get_adapter(id);
-            serde_json::json!({
-                "installed": adapter.is_installed(),
-                "configPath": adapter.config_path().display().to_string(),
-            })
-        }
-        Err(error) => serde_json::json!({
-            "error": error.to_string(),
-        }),
-    }
-}
-
-#[tauri::command]
-async fn start_setup(app: AppHandle, tool: String) -> Result<serde_json::Value, String> {
-    set_status(&app, |status| {
-        *status = SetupStatus {
-            running: true,
-            authorize_url: None,
-            error: None,
-            outcome: None,
-        };
-    });
-
-    let opener_app = app.clone();
-    let result = tauri::async_runtime::spawn(async move {
-        run_setup(&tool, None, move |progress| {
-            if let SetupProgress::AuthorizeStarted { authorize_url } = progress {
-                if let Err(error) = opener_app
-                    .opener()
-                    .open_url(authorize_url.as_str(), None::<&str>)
-                {
-                    eprintln!("failed to open authorization browser: {error}");
-                }
-            }
-        })
-        .await
-    })
-    .await
-    .map_err(|error| error.to_string())?;
-
-    match result {
-        Ok(outcome) => {
-            set_status(&app, |status| {
-                status.running = false;
-                status.outcome = Some(serde_json::to_value(&outcome).unwrap_or_default());
-            });
-            let _ = app.emit("setup-status", status_value(&app));
-            Ok(status_value(&app))
-        }
-        Err(error) => {
-            set_status(&app, |status| {
-                status.running = false;
-                status.error = Some(error.to_string());
-            });
-            let _ = app.emit("setup-status", status_value(&app));
-            Err(error.to_string())
-        }
-    }
-}
-
-#[tauri::command]
-fn setup_status(app: AppHandle) -> serde_json::Value {
-    status_value(&app)
-}
-
-#[tauri::command]
-async fn reopen_authorize(app: AppHandle, url: String) -> Result<(), String> {
-    app.opener()
-        .open_url(url.as_str(), None::<&str>)
-        .map_err(|error| error.to_string())
-}
-
-fn set_status(app: &AppHandle, update: impl FnOnce(&mut SetupStatus)) {
-    let state = app.state::<SetupState>();
-    let mut status = state.status.lock().expect("setup status lock");
-    update(&mut status);
-}
-
-fn status_value(app: &AppHandle) -> serde_json::Value {
-    let state = app.state::<SetupState>();
-    let status = state.status.lock().expect("setup status lock").clone();
-    serde_json::json!({
-        "running": status.running,
-        "authorizeUrl": status.authorize_url,
-        "error": status.error,
-        "outcome": status.outcome,
-    })
 }
 
 // Desktop login state contains the management credential only on the Rust side.
@@ -339,18 +230,15 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
-        .manage(SetupState::default())
         .manage(tokenmarket_core::connections::ConnectionManager::current())
         .manage(workspace::WorkspaceState::new())
         .setup(|app| {
             let api_base = tokenmarket_core::config::console_api_base_url();
             app.manage(DesktopState {
                 login: DesktopLogin::with_credentials(
-                    app.path().app_local_data_dir()?.join("desktop-login"),
+                    tokenmarket_core::client::login_directory(&api_base),
                     DesktopClient::new(api_base.clone()),
-                    Arc::new(CachedDesktopCredentials::new(Arc::new(
-                        NativeDesktopCredentials::new(&api_base),
-                    ))),
+                    Arc::new(NativeDesktopCredentials::new(&api_base)),
                 ),
                 session: Mutex::new(None),
                 error: Mutex::new(None),
@@ -379,7 +267,6 @@ pub fn run() {
             workspace::desktop_workspace_context,
             workspace::switch_desktop_workspace,
             workspace::open_desktop_account_page,
-            tool_status,
             connections::connect_tool,
             connections::prepare_tool_reconnect,
             connections::reconnect_tool,
@@ -389,9 +276,6 @@ pub fn run() {
             desktop_tool_inventory,
             prepare_tool_connect,
             download_tool,
-            start_setup,
-            setup_status,
-            reopen_authorize,
             desktop_login_status,
             refresh_desktop_session,
             logout_desktop_session,

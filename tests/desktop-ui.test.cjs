@@ -42,7 +42,7 @@ test('new connect requires explicit confirmation, uses selected workspace and se
     await p.locator('.connect-cancel').click();assert.equal((await calls(p,'connect_tool')).length,0);
     await p.locator('[data-tool="workbuddy"] .tool-connect').click();await p.locator('.connect-confirm').click();
     await p.getByRole('heading',{name:'WorkBuddy 已接入'}).waitFor();await p.locator('dialog[open] .close').click();
-    assert.deepEqual((await calls(p,'connect_tool'))[0].args,{tool:'workbuddy'});
+    assert.deepEqual((await calls(p,'connect_tool'))[0].args,{tool:'workbuddy',recovery:null});
     await detail(p,'workbuddy');assert.match(await p.locator('#tool-detail-region').innerText(),/团队空间/);assert.match(await p.locator('#tool-detail-region').innerText(),/model-from-catalogue/);
     assert.equal((await calls(p,'test_tool_connection')).length,0);await p.locator('#tool-detail-region .tool-launch').click();assert.equal((await calls(p,'launch_connected_tool'))[0].args.tool,'workbuddy');assert.deepEqual(f.errors,[]);
   } finally {await f.close();}
@@ -57,19 +57,18 @@ test('paid test requires model and confirmation and keeps saved key/workspace af
     await p.locator('.test-cancel').click();await p.evaluate(()=>window.__fixture.testPassed=false);await p.locator('.tool-test').click();await p.locator('.test-model').selectOption('server-model-a');await p.locator('.test-confirm').click();await p.locator('.test-feedback.error').waitFor();assert.match(await p.locator('.test-feedback').innerText(),/失败/);assert.deepEqual(f.errors,[]);
   }finally{await f.close();}
 });
-test('configuration drift disables testing and legacy connections retain unknown ownership', async () => {
-  const f=await openFixture({changed:true,legacy:true});try {
+test('configuration drift disables testing until configuration is repaired', async () => {
+  const f=await openFixture({changed:true});try {
     const p=f.page;await detail(p,'codex');assert.equal(await p.locator('.tool-test').isDisabled(),true);
-    await p.locator('.primary-nav [data-page="tools"]').click();await detail(p,'deepseek-harness');assert.match(await p.locator('#tool-detail-region').innerText(),/未知（旧版记录）/);
-    assert.equal(await p.locator('#tool-detail-region .tool-test').count(),0);assert.equal((await calls(p,'test_tool_connection')).length,0);assert.deepEqual(f.errors,[]);
+    assert.equal((await calls(p,'test_tool_connection')).length,0);assert.deepEqual(f.errors,[]);
   }finally{await f.close();}
 });
 test('reconnect preserves native receipt and expected current ownership in command arguments', async () => {
   const f=await openFixture();try {
     const p=f.page;await switchTeam(p);await detail(p,'claude-code');await manage(p);await p.locator('#tool-detail-region .tool-connect').click();
-    assert.equal((await calls(p,'reconnect_tool')).length,0);assert.match(await p.locator('.reconnect-from').innerText(),/个人空间/);assert.match(await p.locator('.reconnect-to').innerText(),/团队空间/);
+    assert.equal((await calls(p,'reconnect_tool')).length,0);assert.equal(await p.locator('.reconnect-dialog input[type=checkbox]').count(),0);assert.match(await p.locator('.reconnect-from').innerText(),/个人空间/);assert.match(await p.locator('.reconnect-to').innerText(),/团队空间/);
     await p.locator('.reconnect-confirm').click();await p.getByRole('heading',{name:'Claude Code 已接入'}).waitFor();
-    assert.deepEqual((await calls(p,'reconnect_tool'))[0].args,{tool:'claude-code',expectedKeyId:'receipt-claude-code',expectedOwnerId:'user-fixture',expectedWorkspaceId:'team'});assert.deepEqual(f.errors,[]);
+    assert.deepEqual((await calls(p,'reconnect_tool'))[0].args,{tool:'claude-code',expectedKeyId:'receipt-claude-code',expectedOwnerId:'user-fixture',expectedWorkspaceId:'team',recovery:null});assert.deepEqual(f.errors,[]);
   }finally{await f.close();}
 });
 test('disconnect confirmation and conflict resolution forward only explicit receipt choices', async () => {
@@ -105,4 +104,30 @@ test('a refreshed workspace invalidates a pending connect before any configurati
     await p.evaluate(async()=>{window.__fixture.current=window.__fixture.team;await window.TokenMarketWorkspace.refresh();});
     assert.equal(await p.locator('.connect-confirm-dialog').isVisible(),false);assert.equal((await calls(p,'connect_tool')).length,0);assert.deepEqual(f.errors,[]);
   }finally{await f.close();}
+});
+test('normal connection dialogs keep credential reuse and creation invisible', async () => {
+  const f=await openFixture();try {
+    const p=f.page;await detail(p,'claude-code');await manage(p);await p.locator('#tool-detail-region .tool-connect').click();
+    assert.equal(await p.locator('.reconnect-dialog input[type=checkbox]').count(),0);
+    assert.doesNotMatch(await p.locator('.reconnect-dialog').innerText(),/Key|凭据/);
+    await p.locator('.reconnect-cancel').click();
+    await p.locator('.primary-nav [data-page="tools"]').click();await p.locator('[data-tool="workbuddy"] .tool-connect').click();
+    assert.equal(await p.locator('.connect-confirm-dialog input[type=checkbox]').count(),0);
+    assert.doesNotMatch(await p.locator('.connect-confirm-dialog').innerText(),/Key|凭据/);
+    await p.locator('.connect-confirm').click();await p.getByRole('heading',{name:'WorkBuddy 已接入'}).waitFor();
+    assert.doesNotMatch(await p.locator('dialog[open]').innerText(),/Key|凭据/);
+    assert.deepEqual((await calls(p,'connect_tool'))[0].args,{tool:'workbuddy',recovery:null});assert.deepEqual(f.errors,[]);
+  }finally{await f.close();}
+});
+test('missing local credentials require scoped recovery confirmation and no clear action exists', async () => {
+  const f=await openFixture({credentialLost:true});try {
+    const p=f.page;await detail(p,'claude-code');await manage(p);assert.equal(await p.getByRole('button',{name:'清除连接',exact:true}).count(),0);
+    await p.locator('.tool-connect').filter({hasText:'重新接入'}).click();await p.locator('.reconnect-confirm').click();
+    await p.locator('.recovery-dialog[open]').waitFor();assert.match(await p.locator('.recovery-scope').innerText(),/个人空间/);
+    assert.equal((await calls(p,'reconnect_tool')).length,1);await p.locator('.recovery-cancel').click();assert.equal((await calls(p,'reconnect_tool')).length,1);
+    await manage(p);await p.locator('.tool-connect').filter({hasText:'重新接入'}).click();await p.locator('.reconnect-confirm').click();await p.locator('.recovery-dialog[open]').waitFor();
+    await p.locator('.recovery-confirm').click();await p.getByRole('heading',{name:'Claude Code 已接入'}).waitFor();
+    const request=(await calls(p,'reconnect_tool')).at(-1).args;assert.deepEqual(request.recovery,{keyId:'missing-fixture',ownerId:'user-fixture',workspaceId:'personal',ownerName:'界面测试账号',workspaceName:'个人空间'});
+    assert.deepEqual(f.errors,[]);
+  } finally {await f.close();}
 });

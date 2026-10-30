@@ -1,7 +1,8 @@
+mod support;
 use serde_json::json;
 use tempfile::tempdir;
 use tokenmarket_core::{
-    connections::{ConnectContext, ConnectionManager},
+    connections::ConnectContext,
     inventory::{HostPlatform, InstallationEnvironment, ToolInventory},
     ToolId,
 };
@@ -27,7 +28,7 @@ async fn malformed_config_is_preserved_before_any_key_is_requested() {
         application_directories: vec![],
         executable_extensions: vec![],
     });
-    let manager = ConnectionManager::new(
+    let manager = support::manager(
         root.path().join(".tokenmarket/desktop-connections"),
         "http://127.0.0.1:1".into(),
         "http://127.0.0.1:1".into(),
@@ -36,6 +37,7 @@ async fn malformed_config_is_preserved_before_any_key_is_requested() {
         .connect(
             ConnectContext {
                 session_token: "private".into(),
+                owner_id: "u1".into(),
                 workspace_id: "42".into(),
             },
             ToolId::ClaudeCode,
@@ -107,12 +109,7 @@ async fn platform(
                 )
                 .await
                 .unwrap();
-            if fail_key
-                || first.contains("/disable ")
-                || (first.starts_with("GET ")
-                    && models["data"][0]["id"] == "glm-5.3"
-                    && models["wait_for_cleanup"] != true)
-            {
+            if fail_key || first.starts_with("GET ") {
                 break;
             }
         }
@@ -141,6 +138,7 @@ fn inventory(root: &std::path::Path) -> ToolInventory {
 fn context() -> ConnectContext {
     ConnectContext {
         session_token: "desktop-secret".into(),
+        owner_id: "u1".into(),
         workspace_id: "42".into(),
     }
 }
@@ -157,7 +155,7 @@ async fn connect_uses_desktop_key_and_visible_model_without_generation_and_recor
         false,
     )
     .await;
-    let manager = ConnectionManager::new(
+    let manager = support::manager(
         root.path().join(".tokenmarket/desktop-connections"),
         url.clone(),
         url.clone(),
@@ -169,7 +167,7 @@ async fn connect_uses_desktop_key_and_visible_model_without_generation_and_recor
         .unwrap();
     assert_eq!(summary.state, "configured_untested");
     assert_eq!(
-        inventory.list().unwrap()[0]
+        inventory.list_with_connections(&manager).unwrap()[0]
             .connection
             .as_ref()
             .unwrap()
@@ -189,7 +187,7 @@ async fn connect_uses_desktop_key_and_visible_model_without_generation_and_recor
     assert_eq!(applied["env"]["ANTHROPIC_API_KEY"], "sk-fixture");
     assert_eq!(applied["env"]["ANTHROPIC_AUTH_TOKEN"], "sk-fixture");
     assert_eq!(applied["env"]["CLAUDE_CODE_MAX_CONTEXT_TOKENS"], "202752");
-    let reopened = ConnectionManager::new(
+    let reopened = support::manager(
         root.path().join(".tokenmarket/desktop-connections"),
         url.clone(),
         url,
@@ -201,7 +199,7 @@ async fn connect_uses_desktop_key_and_visible_model_without_generation_and_recor
     assert_eq!(records[0].protocol, "ANTHROPIC_MESSAGES");
     let receipt = &records[0].receipts[0];
     assert_eq!(
-        std::fs::read_to_string(receipt.backup_path.as_ref().unwrap()).unwrap(),
+        String::from_utf8(support::read_private(receipt.backup_path.as_ref().unwrap())).unwrap(),
         original.to_string()
     );
     assert_eq!(
@@ -222,13 +220,13 @@ async fn connect_uses_desktop_key_and_visible_model_without_generation_and_recor
     );
 }
 #[tokio::test]
-async fn missing_required_model_preserves_config_and_cleans_only_unused_issued_key() {
+async fn missing_required_model_preserves_config_and_retains_issued_key_for_retry() {
     let root = tempdir().unwrap();
     let inventory = inventory(root.path());
     let config = root.path().join("settings.json");
     std::fs::write(&config, "{\"model\":\"keep\"}").unwrap();
     let (url, server) = platform(json!({"data":[{"id":"other-model"}]}), false).await;
-    let manager = ConnectionManager::new(
+    let manager = support::manager(
         root.path().join(".tokenmarket/desktop-connections"),
         url.clone(),
         url,
@@ -248,8 +246,7 @@ async fn missing_required_model_preserves_config_and_cleans_only_unused_issued_k
         server.await.unwrap(),
         vec![
             "POST /api/desktop/connections/keys HTTP/1.1",
-            "GET /v1/models HTTP/1.1",
-            "POST /api/desktop/connections/keys/9001/disable HTTP/1.1"
+            "GET /v1/models HTTP/1.1"
         ]
     );
 }
@@ -262,7 +259,7 @@ async fn key_issuance_failure_and_missing_installation_leave_existing_files_and_
     let config = root.path().join("settings.json");
     std::fs::write(&config, "{\"model\":\"keep\"}").unwrap();
     let (url, server) = platform(json!({"data":[]}), true).await;
-    let manager = ConnectionManager::new(
+    let manager = support::manager(
         root.path().join(".tokenmarket/desktop-connections"),
         url.clone(),
         url,
@@ -291,7 +288,7 @@ async fn key_issuance_failure_and_missing_installation_leave_existing_files_and_
 }
 #[cfg(unix)]
 #[tokio::test]
-async fn config_write_failure_keeps_prior_config_and_cleans_the_new_unused_key() {
+async fn config_write_failure_keeps_prior_config_and_retains_new_key_for_retry() {
     use std::os::unix::fs::PermissionsExt;
     let root = tempdir().unwrap();
     let inventory = inventory(root.path());
@@ -305,7 +302,7 @@ async fn config_write_failure_keeps_prior_config_and_cleans_the_new_unused_key()
         false,
     )
     .await;
-    let manager = ConnectionManager::new(
+    let manager = support::manager(
         root.path().join(".tokenmarket/desktop-connections"),
         url.clone(),
         url,
@@ -322,12 +319,12 @@ async fn config_write_failure_keeps_prior_config_and_cleans_the_new_unused_key()
     assert!(manager.list().unwrap().is_empty());
     assert_eq!(
         server.await.unwrap().last().unwrap(),
-        "POST /api/desktop/connections/keys/9001/disable HTTP/1.1"
+        "GET /v1/models HTTP/1.1"
     );
 }
 
 #[tokio::test]
-async fn fixed_models_reject_non_text_models_before_config_and_cleanup_new_key() {
+async fn fixed_models_reject_non_text_models_before_config_and_retain_new_key() {
     for tool in [ToolId::ClaudeCode, ToolId::Codex] {
         for model_types in [
             json!(["IMAGE_GENERATION"]),
@@ -356,7 +353,7 @@ async fn fixed_models_reject_non_text_models_before_config_and_cleanup_new_key()
             };
             let (url, server) =
                 platform(json!({"wait_for_cleanup":true,"data":[row]}), false).await;
-            let manager = ConnectionManager::new(root.path().join("records"), url.clone(), url);
+            let manager = support::manager(root.path().join("records"), url.clone(), url);
             assert!(manager
                 .connect(context(), tool, &inv, path.clone())
                 .await
@@ -364,11 +361,8 @@ async fn fixed_models_reject_non_text_models_before_config_and_cleanup_new_key()
             assert_eq!(std::fs::read_to_string(path).unwrap(), original);
             assert!(manager.list().unwrap().is_empty());
             let requests = server.await.unwrap();
-            assert_eq!(requests.len(), 3);
-            assert_eq!(
-                requests[2],
-                "POST /api/desktop/connections/keys/9001/disable HTTP/1.1"
-            );
+            assert_eq!(requests.len(), 2);
+            assert_eq!(requests[1], "GET /v1/models HTTP/1.1");
         }
     }
 }
@@ -396,7 +390,7 @@ async fn fixed_tools_accept_text_generation_and_preserve_tool_protocol() {
             false,
         )
         .await;
-        let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+        let manager = support::manager(root.path().join("state"), url.clone(), url);
         let result = manager.connect(context(), tool, &inv, path).await.unwrap();
         assert_eq!(result.protocol, protocol);
         assert_eq!(result.models, ["glm-5.3"]);

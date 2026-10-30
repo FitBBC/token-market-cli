@@ -53,6 +53,25 @@ impl Document {
     }
 }
 impl HarnessConfig {
+    pub fn credential(&self, gateway: &str) -> Option<String> {
+        let entries = self.profile.value.as_array()?;
+        let route = entries
+            .iter()
+            .find(|entry| entry["id"] == "llm-pi-ai")?
+            .pointer("/config/providers/tokenmarket")?;
+        if route["baseURL"].as_str()?.trim_end_matches('/')
+            != format!("{}/v1", gateway.trim_end_matches('/'))
+        {
+            return None;
+        }
+        self.credentials
+            .value
+            .pointer("/refs/TOKEN_MARKET_API_KEY")
+            .or_else(|| self.credentials.value.get("TOKEN_MARKET_API_KEY"))?
+            .as_str()
+            .filter(|key| !key.is_empty())
+            .map(str::to_owned)
+    }
     pub fn read(path: &Path) -> Result<Self> {
         let home = if path
             .parent()

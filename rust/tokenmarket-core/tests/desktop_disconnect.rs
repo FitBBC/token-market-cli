@@ -1,7 +1,8 @@
+mod support;
 use serde_json::{json, Value};
 use tempfile::tempdir;
 use tokenmarket_core::{
-    connections::{ConnectContext, ConnectionManager, DisconnectRequest},
+    connections::{ConnectContext, DisconnectRequest},
     inventory::{HostPlatform, InstallationEnvironment, ToolInventory},
     ToolId,
 };
@@ -78,12 +79,7 @@ async fn platform(
                 )
                 .await
                 .unwrap();
-            if fail_key
-                || first.contains("/disable ")
-                || (first.starts_with("GET ")
-                    && models["data"][0]["id"] == "glm-5.3"
-                    && models["wait_for_cleanup"] != true)
-            {
+            if fail_key || first.starts_with("GET ") {
                 break;
             }
         }
@@ -112,13 +108,13 @@ fn inventory(root: &std::path::Path) -> ToolInventory {
 fn context() -> ConnectContext {
     ConnectContext {
         session_token: "desktop-secret".into(),
+        owner_id: "u1".into(),
         workspace_id: "42".into(),
     }
 }
 
 #[tokio::test]
-async fn disconnect_restores_owned_fields_preserves_later_edits_and_finishes_when_old_key_disable_fails(
-) {
+async fn disconnect_restores_owned_fields_preserves_later_edits_and_retains_key() {
     let root = tempdir().unwrap();
     let config = root.path().join("settings.json");
     std::fs::write(
@@ -131,7 +127,7 @@ async fn disconnect_restores_owned_fields_preserves_later_edits_and_finishes_whe
         false,
     )
     .await;
-    let manager = ConnectionManager::new(
+    let manager = support::manager(
         root.path().join(".tokenmarket/desktop-connections"),
         url.clone(),
         url,
@@ -158,7 +154,7 @@ async fn disconnect_restores_owned_fields_preserves_later_edits_and_finishes_whe
         .await
         .unwrap();
     assert_eq!(outcome.state, "disconnected");
-    assert!(!outcome.remote_disabled);
+    assert!(outcome.key_retained);
     assert!(manager.list().unwrap().is_empty());
     let restored: Value = serde_json::from_slice(&std::fs::read(&config).unwrap()).unwrap();
     assert_eq!(
@@ -178,8 +174,7 @@ async fn disconnect_restores_owned_fields_preserves_later_edits_and_finishes_whe
         server.await.unwrap(),
         vec![
             "POST /api/desktop/connections/keys HTTP/1.1",
-            "GET /v1/models HTTP/1.1",
-            "POST /api/desktop/connections/keys/9001/disable HTTP/1.1"
+            "GET /v1/models HTTP/1.1"
         ]
     );
 }
@@ -194,7 +189,7 @@ async fn explicit_conflict_choice_preserves_user_replaced_container_without_expo
         false,
     )
     .await;
-    let manager = ConnectionManager::new(
+    let manager = support::manager(
         root.path().join(".tokenmarket/desktop-connections"),
         url.clone(),
         url,
@@ -274,7 +269,7 @@ async fn stale_conflict_approval_cannot_overwrite_newer_edits_and_fresh_restore_
         false,
     )
     .await;
-    let manager = ConnectionManager::new(
+    let manager = support::manager(
         root.path().join(".tokenmarket/desktop-connections"),
         url.clone(),
         url,
@@ -356,7 +351,7 @@ async fn malformed_later_config_and_stale_record_are_preserved_without_remote_re
         false,
     )
     .await;
-    let manager = ConnectionManager::new(
+    let manager = support::manager(
         root.path().join(".tokenmarket/desktop-connections"),
         url.clone(),
         url,
@@ -403,7 +398,7 @@ async fn newly_created_config_is_removed_only_when_empty_after_owned_fields_are_
             false,
         )
         .await;
-        let manager = ConnectionManager::new(
+        let manager = support::manager(
             root.path().join(".tokenmarket/desktop-connections"),
             url.clone(),
             url,
@@ -448,7 +443,7 @@ async fn newly_created_config_is_removed_only_when_empty_after_owned_fields_are_
     }
 }
 #[tokio::test]
-async fn exact_old_key_disable_success_is_truthful_and_bound_to_saved_device_and_workspace() {
+async fn disconnect_keeps_saved_key_without_contacting_the_platform() {
     let root = tempdir().unwrap();
     let config = root.path().join("settings.json");
     let (url, server) = platform(
@@ -456,7 +451,7 @@ async fn exact_old_key_disable_success_is_truthful_and_bound_to_saved_device_and
         false,
     )
     .await;
-    let manager = ConnectionManager::new(
+    let manager = support::manager(
         root.path().join(".tokenmarket/desktop-connections"),
         url.clone(),
         url,
@@ -479,15 +474,15 @@ async fn exact_old_key_disable_success_is_truthful_and_bound_to_saved_device_and
         )
         .await
         .unwrap();
-    assert!(result.remote_disabled);
-    assert_eq!(server.await.unwrap().len(), 3);
+    assert!(result.key_retained);
+    assert_eq!(server.await.unwrap().len(), 2);
 }
 #[tokio::test]
-async fn successful_envelope_with_false_disable_result_does_not_claim_remote_success() {
+async fn disconnect_is_local_even_with_a_different_logged_in_account() {
     let root = tempdir().unwrap();
     let config = root.path().join("settings.json");
     let (url,server)=platform(json!({"disable_success":true,"disable_result":false,"wait_for_cleanup":true,"data":[{"id":"glm-5.3","model_types":["TEXT_GENERATION"]}]}),false).await;
-    let manager = ConnectionManager::new(
+    let manager = support::manager(
         root.path().join(".tokenmarket/desktop-connections"),
         url.clone(),
         url,
@@ -511,9 +506,9 @@ async fn successful_envelope_with_false_disable_result_does_not_claim_remote_suc
         .await
         .unwrap();
     assert_eq!(result.state, "disconnected");
-    assert!(!result.remote_disabled);
+    assert!(result.key_retained);
     assert!(manager.list().unwrap().is_empty());
-    assert_eq!(server.await.unwrap().len(), 3);
+    assert_eq!(server.await.unwrap().len(), 2);
 }
 #[tokio::test]
 async fn first_baseline_distinguishes_explicit_null_from_an_absent_field_after_reopening_store() {
@@ -525,7 +520,7 @@ async fn first_baseline_distinguishes_explicit_null_from_an_absent_field_after_r
     )
     .await;
     let directory = root.path().join(".tokenmarket/desktop-connections");
-    let manager = ConnectionManager::new(directory.clone(), url.clone(), url.clone());
+    let manager = support::manager(directory.clone(), url.clone(), url.clone());
     let original = json!({"model":null,"env":{"ANTHROPIC_API_KEY":null}});
     std::fs::write(&config, original.to_string()).unwrap();
     manager
@@ -538,7 +533,7 @@ async fn first_baseline_distinguishes_explicit_null_from_an_absent_field_after_r
         .await
         .unwrap();
     server.await.unwrap();
-    let reopened = ConnectionManager::new(directory, url.clone(), url);
+    let reopened = support::manager(directory, url.clone(), url);
     reopened
         .disconnect(
             ToolId::ClaudeCode,
@@ -564,7 +559,7 @@ async fn version_one_fixture_recovers_only_owned_baseline_values_and_fails_close
         )
         .await;
         let directory = root.path().join(".tokenmarket/desktop-connections");
-        let manager = ConnectionManager::new(directory.clone(), url.clone(), url);
+        let manager = support::manager(directory.clone(), url.clone(), url);
         std::fs::write(
             &config,
             json!({"model":null,"env":{"OTHER":"original"}}).to_string(),
@@ -582,7 +577,7 @@ async fn version_one_fixture_recovers_only_owned_baseline_values_and_fails_close
         server.await.unwrap();
         // Fixture reproduces the persisted v1 wire format, where absent `before` serialized null.
         let store = directory.join("connections.json");
-        let mut v1: Value = serde_json::from_slice(&std::fs::read(&store).unwrap()).unwrap();
+        let mut v1: Value = serde_json::from_slice(&support::read_private(&store)).unwrap();
         v1[0]["version"] = json!(1);
         for field in v1[0]["receipts"][0]["fields"].as_array_mut().unwrap() {
             if field.get("before").is_none() {
@@ -640,7 +635,7 @@ async fn codex_disconnect_preserves_toml_comments_other_providers_auth_file_and_
         false,
     )
     .await;
-    let manager = ConnectionManager::new(
+    let manager = support::manager(
         root.path().join(".tokenmarket/desktop-connections"),
         url.clone(),
         url,
@@ -689,7 +684,7 @@ async fn newly_created_codex_config_keeps_later_comment_when_managed_fields_are_
         false,
     )
     .await;
-    let manager = ConnectionManager::new(
+    let manager = support::manager(
         root.path().join(".tokenmarket/desktop-connections"),
         url.clone(),
         url,

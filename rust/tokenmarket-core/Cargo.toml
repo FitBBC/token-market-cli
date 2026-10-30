@@ -1,6 +1,6 @@
 [package]
 name = "tokenmarket-core"
-version = "0.1.0"
+version = "1.1.0"
 edition = "2021"
 license = "UNLICENSED"
 
@@ -10,6 +10,7 @@ anyhow = "1"
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 rand = "0.8"
+ring = "0.17"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["arbitrary_precision"] }

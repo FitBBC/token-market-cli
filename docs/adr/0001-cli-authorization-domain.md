@@ -1,9 +1,17 @@
 # ADR 0001 — CLI Authorization Domain
 
+> Client login, CLI and Key lifecycle rules are superseded by accepted ADR 0004. Historical behavior below is retained for context.
+
 Date: 2026-10-27
 
 ## Status
 Accepted
+
+2026-10-30: the user has confirmed that the legacy CLI has no users and needs no
+compatibility. Its authorization/exchange and bulk-disable flow will be removed
+under [ADR 0004](0004-shared-client-key-lifecycle.md), currently awaiting final
+design confirmation. This ADR remains a historical record, not the new refactor
+specification.
 
 ## Context
 Token Market needs a one-command setup flow for popular agent tools. The existing platform already has API key lifecycle management, login sessions, one-time OAuth state, and gateway support for chat, responses, and Anthropic messages. It does not yet have a CLI-specific authorization domain, PKCE, a local callback flow, source metadata on keys, or a dedicated authorization confirmation page.

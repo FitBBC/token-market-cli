@@ -4,7 +4,7 @@ The production frontend in `src/tauri-ui` now uses the approved lightweight desk
 
 Agent details show configured models, connection ownership, test results and usage guidance. Configuration contents and the former protocol-only access-information block are omitted. Credentials and restoration receipts remain on the native side.
 
-New connections and disconnections require explicit confirmation. Paid tests retain their separate fee confirmation and multi-model selection. Existing native receipt IDs, owner/workspace guards, configuration-conflict choices, legacy ownership handling and permission-gated account links are preserved. The frontend contains no demo state controls or mock IPC.
+New connections and disconnections require explicit confirmation. Paid tests retain their separate fee confirmation and multi-model selection. Existing native receipt IDs, owner/workspace guards, configuration-conflict choices, permission-gated account links are preserved. The frontend contains no demo state controls or mock IPC.
 
 ## UI regression checks
 

@@ -1,8 +1,9 @@
 # Desktop tool inventory
 
 `ToolInventory::current().list()` is a read-only, fresh filesystem read. Installation
-discovery never needs tool credentials or executes a tool. Connection summaries
-also read existing receipt-owned configuration fields to check that an earlier
+discovery never needs tool credentials or executes a tool. Connection summaries decrypt app-owned receipts through the shared connection
+manager, whose encryption key is cached after successful OS credential-store
+access. They also read existing receipt-owned configuration fields to check that an earlier
 Test Passed still applies; owned drift or missing files shows Configuration Changed
 / Unavailable and clears the current pass from the summary. Credentials are never displayed. Inventory does not obtain a
 Key, write configuration or make network/model requests.
@@ -46,9 +47,8 @@ The six rows display native SVG tool marks, names and installation status.
 Missing tools offer the fixed official download page and a disabled Connect.
 The UI refreshes after login, explicit re-detection, foreground/visibility return
 and every 15 seconds while visible and authenticated. Logout clears the region
-and late results cannot restore a previous account's inventory. Existing legacy
-key records display their saved model with account and Bound Workspace marked
-unknown; the current account/workspace is never used to fill these fields.
+and late results cannot restore a previous account's inventory. Old CLI key-history files are not read or projected. Unknown tool configuration
+is not assigned to the current account/workspace by inference.
 
 `download_tool` opens only the fixed URL selected by the Rust catalogue. The UI
 never supplies an arbitrary download URL. Verified primary pages, 2026-10-28:

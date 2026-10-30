@@ -1,3 +1,4 @@
+mod support;
 use serde_json::{json, Value};
 use tempfile::tempdir;
 use tokenmarket_core::{
@@ -96,11 +97,12 @@ async fn saved(
         application_directories: vec![],
         executable_extensions: vec![],
     });
-    let manager = ConnectionManager::new(directory.clone(), url.into(), url.into());
+    let manager = support::manager(directory.clone(), url.into(), url.into());
     manager
         .connect(
             ConnectContext {
                 session_token: "fixture-desktop".into(),
+                owner_id: "old-account".into(),
                 workspace_id: "42".into(),
             },
             tool,
@@ -111,12 +113,12 @@ async fn saved(
         .unwrap();
     // Negative record-contract cases deliberately corrupt a genuine connection after Connect.
     let path = directory.join("connections.json");
-    let mut records: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    let mut records: Value = serde_json::from_slice(&support::read_private(&path)).unwrap();
     records[0]["protocol"] = json!(protocol);
     records[0]["models"] = models;
     std::fs::write(&path, records.to_string()).unwrap();
     // After logout/account changes, current dashboard URLs cannot replace the saved route.
-    ConnectionManager::new(
+    support::manager(
         directory,
         "http://127.0.0.1:1".into(),
         "http://127.0.0.1:1".into(),
@@ -145,7 +147,9 @@ async fn codex_test_uses_saved_responses_credentials_and_persists_redacted_inven
     )
     .await;
     let before = std::fs::read(config_path(root.path(), ToolId::Codex)).unwrap();
-    let first = inventory(root.path()).list().unwrap();
+    let first = inventory(root.path())
+        .list_with_connections(&manager)
+        .unwrap();
     let initial =
         serde_json::to_value(first.iter().find(|e| e.id == ToolId::Codex).unwrap()).unwrap();
     assert_eq!(initial["connection"]["keyId"], "9001");
@@ -180,7 +184,9 @@ async fn codex_test_uses_saved_responses_credentials_and_persists_redacted_inven
         std::fs::read(config_path(root.path(), ToolId::Codex)).unwrap(),
         before
     );
-    let reopened = inventory(root.path()).list().unwrap();
+    let reopened = inventory(root.path())
+        .list_with_connections(&manager)
+        .unwrap();
     println!(
         "serialized_inventory={}",
         serde_json::to_string(&reopened).unwrap()
@@ -419,7 +425,7 @@ async fn responses_accepts_official_null_error_and_new_key_does_not_inherit_prev
     let path = root
         .path()
         .join(".tokenmarket/desktop-connections/connections.json");
-    let mut records: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    let mut records: Value = serde_json::from_slice(&support::read_private(&path)).unwrap();
     records[0]["key_id"] = json!("9002");
     std::fs::write(path, records.to_string()).unwrap();
     assert_eq!(
@@ -465,7 +471,11 @@ async fn rejected_key_returns_redacted_actionable_failure_and_network_failure_is
         assert!(!serde_json::to_string(&result)
             .unwrap()
             .contains("sk-original"));
-        assert!(result.detail.contains("手动重试"));
+        assert!(result.detail.contains(if remote {
+            "清除连接"
+        } else {
+            "手动重试"
+        }));
         if remote {
             assert!(result.detail.contains("HTTP 401"));
             request.await.unwrap();
@@ -636,7 +646,12 @@ async fn owned_config_drift_or_deletion_refuses_paid_request_but_unrelated_edits
     assert!(manager.summaries().unwrap()[0].1.test_result.is_none());
     println!(
         "drift_inventory={}",
-        serde_json::to_string(&inventory(root.path()).list().unwrap()).unwrap()
+        serde_json::to_string(
+            &inventory(root.path())
+                .list_with_connections(&manager)
+                .unwrap()
+        )
+        .unwrap()
     );
     assert!(manager
         .test_connection(

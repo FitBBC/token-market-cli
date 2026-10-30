@@ -3,7 +3,7 @@
   const root = document.getElementById('tools-region');
   const dialog = document.createElement('dialog');
   dialog.className = 'connection-test-dialog';
-  dialog.innerHTML = '<h3>测试连接</h3><p class="test-context"></p><p>本次会向该连接的模型发送一次真实请求，可能产生少量调用费用。计费使用此连接原有的 Key 和计费空间。</p><p>仅验证一次完整文本输出；不验证流式或工具调用，也不会更改 Agent 配置。</p><label class="test-model-label">本次测试模型 <select class="test-model"></select></label><p class="test-feedback" role="status" aria-live="polite"></p><div class="tool-actions"><button class="test-cancel" type="button">取消</button><button class="primary test-confirm" type="button">确认费用并测试一次</button></div>';
+  dialog.innerHTML = '<h3>测试连接</h3><p class="test-context"></p><p>本次会向该连接的模型发送一次真实请求，可能产生少量调用费用。费用由此连接的计费空间承担。</p><p>仅验证一次完整文本输出；不验证流式或工具调用，也不会更改 Agent 配置。</p><label class="test-model-label">本次测试模型 <select class="test-model"></select></label><p class="test-feedback" role="status" aria-live="polite"></p><div class="tool-actions"><button class="test-cancel" type="button">取消</button><button class="primary test-confirm" type="button">确认费用并测试一次</button></div>';
   document.body.append(dialog);
   const selector = dialog.querySelector('.test-model');
   const confirm = dialog.querySelector('.test-confirm');

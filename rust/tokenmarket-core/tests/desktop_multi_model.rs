@@ -1,7 +1,8 @@
+mod support;
 use serde_json::{json, Value};
 use tempfile::tempdir;
 use tokenmarket_core::{
-    connections::{ConnectContext, ConnectionManager},
+    connections::ConnectContext,
     inventory::{HostPlatform, InstallationEnvironment, ToolInventory},
     ToolId,
 };
@@ -51,16 +52,12 @@ async fn platform_sequence(
             let first = request.lines().next().unwrap().to_string();
             requests.push(first.clone());
             let response = if first.starts_with("GET /v1/models ") {
-                assert!(request.contains(if queried == 0 {
-                    "Bearer sk-fixture"
-                } else {
-                    "Bearer sk-replacement"
-                }));
+                assert!(request.contains("Bearer sk-fixture"));
                 let response = catalogues[queried].clone();
                 queried += 1;
                 response
             } else if first.starts_with("POST /v1/chat/completions ") {
-                assert!(request.contains("Bearer sk-replacement"));
+                assert!(request.contains("Bearer sk-fixture"));
                 json!({"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"OK"}}]})
             } else if first.contains("/disable ") {
                 json!({"success":true,"data":true})
@@ -68,7 +65,7 @@ async fn platform_sequence(
                 assert!(request.contains("Bearer desktop-secret"));
                 assert!(request.contains("\"workspace_id\":\"42\""));
                 issued += 1;
-                json!({"success":true,"data":{"api_key":if issued==1 {"sk-fixture"}else{"sk-replacement"},"key_id":format!("{}",9000+issued),"owner":{"id":"u1","name":"Ada"},"bound_workspace":{"id":"42","name":"Research"}}})
+                json!({"success":true,"data":{"api_key":if issued==1 {"sk-fixture"}else{"sk-fixture"},"key_id":format!("{}",9000+issued),"owner":{"id":"u1","name":"Ada"},"bound_workspace":{"id":"42","name":"Research"}}})
             };
             let body = response.to_string();
             let status = if first.starts_with("GET ") && response["fail_http"] == true {
@@ -118,6 +115,7 @@ fn inventory(root: &std::path::Path) -> ToolInventory {
 fn context() -> ConnectContext {
     ConnectContext {
         session_token: "desktop-secret".into(),
+        owner_id: "u1".into(),
         workspace_id: "42".into(),
     }
 }
@@ -138,7 +136,7 @@ async fn workbuddy_imports_all_compatible_models_and_restores_only_owned_fields_
         std::fs::write(&path, serde_json::to_vec(&original).unwrap()).unwrap();
         let catalogue = json!({"data":[{"id":"vendor/zeta~1","display_name":"Zeta","model_types":["TEXT_GENERATION"]},{"id":"responses","model_types":["IMAGE_GENERATION"]},{"id":"alpha","model_types":["TEXT_GENERATION"],"context_window_tokens":65536,"max_output_tokens":8192}]});
         let (url, server) = platform(catalogue, 2).await;
-        let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url.clone());
+        let manager = support::manager(root.path().join("state"), url.clone(), url.clone());
         let summary = manager
             .connect(context(), ToolId::WorkBuddy, &inventory, path.clone())
             .await
@@ -226,7 +224,7 @@ async fn openclaw_preserves_selection_policy_and_other_providers_through_connect
     let original = json!({"models":{"mode":"replace","providers":{"other":{"baseUrl":"https://other"},"tokenmarket":{"custom":"keep"}}},"agents":{"defaults":{"model":{"primary":"other/existing"},"models":{"other/existing":{}}}},"custom":true});
     std::fs::write(&path, serde_json::to_vec(&original).unwrap()).unwrap();
     let (url,server)=platform(json!({"data":[{"id":"zeta","model_types":["TEXT_GENERATION"]},{"id":"alpha","display_name":"Alpha","model_types":["TEXT_GENERATION"],"context_window_tokens":32768,"max_output_tokens":4096,"input_modalities":["text","image"]},{"id":"glm-5.3","model_types":["IMAGE_GENERATION"]}]}),2).await;
-    let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url.clone());
+    let manager = support::manager(root.path().join("state"), url.clone(), url.clone());
     let summary = manager
         .connect(context(), ToolId::OpenClaw, &inventory, path.clone())
         .await
@@ -267,7 +265,7 @@ async fn opencode_imports_provider_map_without_changing_defaults_or_fabricating_
     let original = json!({"model":"other/manual","small_model":"other/small","provider":{"other":{"models":{"manual":{"name":"Manual"}}},"tokenmarket":{"options":{"timeout":60000},"models":{"manual":{"name":"Manual"}},"custom":true}},"theme":"system"});
     std::fs::write(&path, serde_json::to_vec(&original).unwrap()).unwrap();
     let (url,server)=platform(json!({"data":[{"id":"vendor/zeta","model_types":["TEXT_GENERATION"],"context_window_tokens":65536},{"id":"alpha","display_name":"Alpha","model_types":["TEXT_GENERATION"],"context_window_tokens":32768,"max_output_tokens":4096},{"id":"messages","model_types":["IMAGE_GENERATION"]}]}),2).await;
-    let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url.clone());
+    let manager = support::manager(root.path().join("state"), url.clone(), url.clone());
     assert_eq!(
         manager
             .connect(context(), ToolId::OpenCode, &inventory, path.clone())
@@ -311,7 +309,7 @@ async fn all_three_new_configs_disconnect_cleanly_and_empty_or_failed_catalogues
         let inventory = inventory(root.path());
         let path = root.path().join("config.json");
         let (url,server)=platform(json!({"data":[{"id":"one","model_types":["TEXT_GENERATION"]},{"id":"two","model_types":["TEXT_GENERATION"]}]}),2).await;
-        let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+        let manager = support::manager(root.path().join("state"), url.clone(), url);
         manager
             .connect(context(), tool, &inventory, path.clone())
             .await
@@ -339,8 +337,8 @@ async fn all_three_new_configs_disconnect_cleanly_and_empty_or_failed_catalogues
                 "{ \"manual\": true }"
             };
             std::fs::write(&path, original).unwrap();
-            let (url, server) = platform(catalogue, 3).await;
-            let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+            let (url, server) = platform(catalogue, 2).await;
+            let manager = support::manager(root.path().join("state"), url.clone(), url);
             assert!(manager
                 .connect(context(), tool, &inventory, path.clone())
                 .await
@@ -348,11 +346,8 @@ async fn all_three_new_configs_disconnect_cleanly_and_empty_or_failed_catalogues
             assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
             assert!(manager.list().unwrap().is_empty());
             let requests = server.await.unwrap();
-            assert_eq!(requests.len(), 3);
-            assert_eq!(
-                requests.last().unwrap(),
-                "POST /api/desktop/connections/keys/9001/disable HTTP/1.1"
-            );
+            assert_eq!(requests.len(), 2);
+            assert_eq!(requests.last().unwrap(), "GET /v1/models HTTP/1.1");
         }
     }
 }
@@ -399,7 +394,7 @@ async fn malformed_or_ambiguous_native_shapes_fail_before_key_issuance() {
         let inventory = inventory(root.path());
         let path = root.path().join("config.json");
         std::fs::write(&path, original).unwrap();
-        let manager = ConnectionManager::new(
+        let manager = support::manager(
             root.path().join("state"),
             "http://127.0.0.1:1".into(),
             "http://127.0.0.1:1".into(),
@@ -438,8 +433,8 @@ async fn reconnect_all_three_retires_obsolete_models_and_preserves_the_first_bas
             _ => unreachable!(),
         };
         std::fs::write(&path, serde_json::to_vec(&original).unwrap()).unwrap();
-        let (url,server)=platform_sequence(vec![json!({"data":[{"id":"obsolete","model_types":["TEXT_GENERATION"]},{"id":"retained","model_types":["TEXT_GENERATION"],"context_window_tokens":65536,"max_output_tokens":4096}]}),json!({"data":[{"id":"retained","model_types":["TEXT_GENERATION"]},{"id":"new","model_types":["TEXT_GENERATION"]}]})],6).await;
-        let manager = ConnectionManager::new(
+        let (url,server)=platform_sequence(vec![json!({"data":[{"id":"obsolete","model_types":["TEXT_GENERATION"]},{"id":"retained","model_types":["TEXT_GENERATION"],"context_window_tokens":65536,"max_output_tokens":4096}]}),json!({"data":[{"id":"retained","model_types":["TEXT_GENERATION"]},{"id":"new","model_types":["TEXT_GENERATION"]}]})],4).await;
+        let manager = support::manager(
             root.path().join(".tokenmarket/desktop-connections"),
             url.clone(),
             url,
@@ -462,9 +457,9 @@ async fn reconnect_all_three_retires_obsolete_models_and_preserves_the_first_bas
             .await
             .unwrap();
         assert_eq!(outcome.connection.models, vec!["retained", "new"]);
-        assert!(outcome.old_key_disabled);
+        assert!(outcome.key_reused);
         let entry = inventory
-            .list()
+            .list_with_connections(&manager)
             .unwrap()
             .into_iter()
             .find(|entry| entry.id == tool)
@@ -474,7 +469,7 @@ async fn reconnect_all_three_retires_obsolete_models_and_preserves_the_first_bas
             manager
                 .test_connection(
                     tool,
-                    "9002",
+                    "9001",
                     tokenmarket_core::connections::ConnectionTestRequest {
                         confirmed: true,
                         model: Some("retained".into())
@@ -486,7 +481,7 @@ async fn reconnect_all_three_retires_obsolete_models_and_preserves_the_first_bas
         );
         assert_eq!(
             inventory
-                .list()
+                .list_with_connections(&manager)
                 .unwrap()
                 .into_iter()
                 .find(|entry| entry.id == tool)
@@ -503,7 +498,7 @@ async fn reconnect_all_three_retires_obsolete_models_and_preserves_the_first_bas
                 let rows = current["models"].as_array().unwrap();
                 assert!(!rows.iter().any(|r| r["id"] == "obsolete"));
                 let row = rows.iter().find(|r| r["id"] == "retained").unwrap();
-                assert_eq!(row["apiKey"], "sk-replacement");
+                assert_eq!(row["apiKey"], "sk-fixture");
                 assert!(row.get("maxOutputTokens").is_none());
                 assert_eq!(
                     current["availableModels"],
@@ -512,7 +507,7 @@ async fn reconnect_all_three_retires_obsolete_models_and_preserves_the_first_bas
             }
             ToolId::OpenClaw => {
                 let route = &current["models"]["providers"]["tokenmarket"];
-                assert_eq!(route["apiKey"], "sk-replacement");
+                assert_eq!(route["apiKey"], "sk-fixture");
                 let rows = route["models"].as_array().unwrap();
                 assert!(!rows.iter().any(|r| r["id"] == "obsolete"));
                 assert!(rows
@@ -524,7 +519,7 @@ async fn reconnect_all_three_retires_obsolete_models_and_preserves_the_first_bas
             }
             ToolId::OpenCode => {
                 let route = &current["provider"]["tokenmarket"];
-                assert_eq!(route["options"]["apiKey"], "sk-replacement");
+                assert_eq!(route["options"]["apiKey"], "sk-fixture");
                 assert!(route["models"].get("obsolete").is_none());
                 assert!(route["models"]["retained"].get("limit").is_none());
             }
@@ -532,7 +527,7 @@ async fn reconnect_all_three_retires_obsolete_models_and_preserves_the_first_bas
         }
         assert_eq!(
             manager
-                .disconnect(tool, "9002", None, DisconnectRequest::default())
+                .disconnect(tool, "9001", None, DisconnectRequest::default())
                 .await
                 .unwrap()
                 .state,
@@ -547,7 +542,7 @@ async fn reconnect_all_three_retires_obsolete_models_and_preserves_the_first_bas
                 .push(json!("later"));
         }
         assert_eq!(read(&path), expected);
-        assert_eq!(server.await.unwrap().len(), 6);
+        assert_eq!(server.await.unwrap().len(), 4);
     }
 }
 
@@ -558,8 +553,8 @@ async fn workbuddy_existing_default_survives_connect_and_reconnect() {
     let path = root.path().join("models.json");
     std::fs::write(&path, r#"[{"id":"alpha","isDefault":true}]"#).unwrap();
     let catalogue = json!({"data":[{"id":"alpha","model_types":["TEXT_GENERATION"]},{"id":"beta","model_types":["TEXT_GENERATION"]}]});
-    let (url, server) = platform_sequence(vec![catalogue.clone(), catalogue], 5).await;
-    let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+    let (url, server) = platform_sequence(vec![catalogue.clone(), catalogue], 3).await;
+    let manager = support::manager(root.path().join("state"), url.clone(), url);
     manager
         .connect(context(), ToolId::WorkBuddy, &inventory, path.clone())
         .await
@@ -590,8 +585,8 @@ async fn opencode_jsonc_keeps_comments_filename_and_manual_settings_through_repl
     let path = root.path().join("opencode.jsonc");
     std::fs::write(&path, "{\n // original comment\n \"model\": \"other/model\",\n \"provider\": {\n  /* provider note */ \"other\": {\"custom\": true,},\n },\n}\n").unwrap();
     let catalogue = json!({"data":[{"id":"alpha","model_types":["TEXT_GENERATION"]}]});
-    let (url, server) = platform_sequence(vec![catalogue.clone(), catalogue], 5).await;
-    let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+    let (url, server) = platform_sequence(vec![catalogue.clone(), catalogue], 3).await;
+    let manager = support::manager(root.path().join("state"), url.clone(), url);
     manager
         .connect(context(), ToolId::OpenCode, &inv, path.clone())
         .await
@@ -611,7 +606,7 @@ async fn opencode_jsonc_keeps_comments_filename_and_manual_settings_through_repl
         .await
         .unwrap();
     manager
-        .disconnect(ToolId::OpenCode, "9002", None, DisconnectRequest::default())
+        .disconnect(ToolId::OpenCode, "9001", None, DisconnectRequest::default())
         .await
         .unwrap();
     let restored = std::fs::read_to_string(&path).unwrap();
@@ -638,15 +633,15 @@ async fn disappearing_and_reappearing_models_restore_first_missing_and_explicit_
     std::fs::write(&path, original.to_string()).unwrap();
     let rich = json!({"data":[{"id":"alpha","model_types":["TEXT_GENERATION"],"context_window_tokens":65536,"max_output_tokens":4096},{"id":"beta","model_types":["TEXT_GENERATION"]}]});
     let small = json!({"data":[{"id":"beta","model_types":["TEXT_GENERATION"]}]});
-    let (url, server) = platform_sequence(vec![rich.clone(), small.clone(), rich, small], 14).await;
-    let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+    let (url, server) = platform_sequence(vec![rich.clone(), small.clone(), rich, small], 8).await;
+    let manager = support::manager(root.path().join("state"), url.clone(), url);
     manager
         .connect(context(), ToolId::OpenCode, &inv, path.clone())
         .await
         .unwrap();
-    for (old, next) in [("9001", "9002"), ("9002", "9003"), ("9003", "9004")] {
+    for index in 0..3 {
         manager
-            .reconnect(context(), ToolId::OpenCode, old, &inv, path.clone())
+            .reconnect(context(), ToolId::OpenCode, "9001", &inv, path.clone())
             .await
             .unwrap();
         assert_eq!(
@@ -657,7 +652,7 @@ async fn disappearing_and_reappearing_models_restore_first_missing_and_explicit_
             manager
                 .test_connection(
                     ToolId::OpenCode,
-                    next,
+                    "9001",
                     tokenmarket_core::connections::ConnectionTestRequest {
                         confirmed: true,
                         model: Some("beta".into())
@@ -668,7 +663,7 @@ async fn disappearing_and_reappearing_models_restore_first_missing_and_explicit_
                 .passed
         );
         let current = read(&path);
-        if next != "9003" {
+        if index != 1 {
             assert_eq!(
                 current["provider"]["tokenmarket"]["models"]["alpha"],
                 original["provider"]["tokenmarket"]["models"]["alpha"]
@@ -681,7 +676,7 @@ async fn disappearing_and_reappearing_models_restore_first_missing_and_explicit_
         }
     }
     manager
-        .disconnect(ToolId::OpenCode, "9004", None, DisconnectRequest::default())
+        .disconnect(ToolId::OpenCode, "9001", None, DisconnectRequest::default())
         .await
         .unwrap();
     assert_eq!(read(&path), original);
@@ -698,8 +693,8 @@ async fn edits_to_retired_fields_remain_unowned_and_reacquisition_requires_expli
     std::fs::write(&path, original.to_string()).unwrap();
     let rich = json!({"data":[{"id":"alpha","model_types":["TEXT_GENERATION"],"context_window_tokens":65536,"max_output_tokens":4096},{"id":"beta","model_types":["TEXT_GENERATION"]}]});
     let small = json!({"data":[{"id":"beta","model_types":["TEXT_GENERATION"]}]});
-    let (url, server) = platform_sequence(vec![rich.clone(), small.clone(), rich, small], 13).await;
-    let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+    let (url, server) = platform_sequence(vec![rich.clone(), small.clone(), rich, small], 7).await;
+    let manager = support::manager(root.path().join("state"), url.clone(), url);
     manager
         .connect(context(), ToolId::OpenCode, &inv, path.clone())
         .await
@@ -719,7 +714,7 @@ async fn edits_to_retired_fields_remain_unowned_and_reacquisition_requires_expli
         manager
             .test_connection(
                 ToolId::OpenCode,
-                "9002",
+                "9001",
                 ConnectionTestRequest {
                     confirmed: true,
                     model: Some("beta".into())
@@ -731,20 +726,20 @@ async fn edits_to_retired_fields_remain_unowned_and_reacquisition_requires_expli
     );
     let before = std::fs::read(&path).unwrap();
     assert!(manager
-        .reconnect(context(), ToolId::OpenCode, "9002", &inv, path.clone())
+        .reconnect(context(), ToolId::OpenCode, "9001", &inv, path.clone())
         .await
         .is_err());
-    assert_eq!(manager.list().unwrap()[0].key_id, "9002");
+    assert_eq!(manager.list().unwrap()[0].key_id, "9001");
     assert_eq!(std::fs::read(&path).unwrap(), before);
     manager
-        .reconnect(context(), ToolId::OpenCode, "9002", &inv, path.clone())
+        .reconnect(context(), ToolId::OpenCode, "9001", &inv, path.clone())
         .await
         .unwrap();
     assert!(
         manager
             .test_connection(
                 ToolId::OpenCode,
-                "9004",
+                "9001",
                 ConnectionTestRequest {
                     confirmed: true,
                     model: Some("beta".into())
@@ -755,7 +750,7 @@ async fn edits_to_retired_fields_remain_unowned_and_reacquisition_requires_expli
             .passed
     );
     manager
-        .disconnect(ToolId::OpenCode, "9004", None, DisconnectRequest::default())
+        .disconnect(ToolId::OpenCode, "9001", None, DisconnectRequest::default())
         .await
         .unwrap();
     let mut expected = original;
@@ -768,7 +763,7 @@ async fn edits_to_retired_fields_remain_unowned_and_reacquisition_requires_expli
             .iter()
             .filter(|r| r.contains("/9003/disable"))
             .count(),
-        1
+        0
     );
 }
 
@@ -783,7 +778,7 @@ async fn new_opencode_jsonc_keeps_a_later_comment_when_disconnect_removes_all_ma
         2,
     )
     .await;
-    let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+    let manager = support::manager(root.path().join("state"), url.clone(), url);
     manager
         .connect(context(), ToolId::OpenCode, &inv, path.clone())
         .await

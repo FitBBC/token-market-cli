@@ -1,26 +1,12 @@
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::{
     fs,
     path::{Path, PathBuf},
 };
 
 use crate::adapters::{ToolId, ToolStatus};
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct ManagedKeyRecord {
-    pub tool: ToolId,
-    pub key_name: String,
-    pub key_id: String,
-    pub setup_id: String,
-    pub config_path: String,
-    pub backup_path: Option<String>,
-    pub model: String,
-    pub created_at: String,
-    pub revocable: bool,
-}
 
 pub fn console_api_base_url() -> String {
     std::env::var("TOKEN_MARKET_CONSOLE_API_BASE_URL").unwrap_or_else(|_| {
@@ -48,10 +34,6 @@ pub fn token_market_home() -> PathBuf {
     home_dir().join(".tokenmarket")
 }
 
-pub fn keys_file() -> PathBuf {
-    token_market_home().join("keys.json")
-}
-
 pub fn backups_root() -> PathBuf {
     token_market_home().join("backups")
 }
@@ -66,34 +48,6 @@ pub fn tool_statuses() -> Vec<ToolStatus> {
             config_path: adapter.config_path().display().to_string(),
         })
         .collect()
-}
-
-pub fn list_managed_keys() -> Result<Vec<ManagedKeyRecord>> {
-    let file = keys_file();
-    if !file.exists() {
-        return Ok(Vec::new());
-    }
-    let content = fs::read_to_string(&file).with_context(|| format!("read {}", file.display()))?;
-    if content.trim().is_empty() {
-        return Ok(Vec::new());
-    }
-    serde_json::from_str(&content).with_context(|| format!("parse {}", file.display()))
-}
-
-pub fn save_managed_key(record: ManagedKeyRecord) -> Result<()> {
-    let mut current = list_managed_keys()?;
-    current.retain(|item| item.tool != record.tool);
-    current.push(record);
-
-    let file = keys_file();
-    write_private_json(&file, &current)?;
-    Ok(())
-}
-
-pub fn find_managed_key(tool: ToolId) -> Result<Option<ManagedKeyRecord>> {
-    Ok(list_managed_keys()?
-        .into_iter()
-        .find(|record| record.tool == tool))
 }
 
 pub fn now_iso8601() -> String {

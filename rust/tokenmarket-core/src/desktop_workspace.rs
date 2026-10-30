@@ -108,7 +108,7 @@ impl DesktopWorkspace {
             .request(
                 session,
                 reqwest::Method::GET,
-                "/api/auth/my/context",
+                "/api/client/workspaces/context",
                 None,
                 None,
             )
@@ -124,7 +124,7 @@ impl DesktopWorkspace {
             .request(
                 session,
                 reqwest::Method::GET,
-                "/api/auth/my/context",
+                "/api/client/workspaces/context",
                 None,
                 None,
             )
@@ -136,7 +136,7 @@ impl DesktopWorkspace {
             .request(
                 session,
                 reqwest::Method::POST,
-                "/api/auth/my/last-workspace",
+                "/api/client/workspaces/current",
                 Some(target),
                 Some(json!({"workspaceId":target})),
             )
@@ -145,7 +145,7 @@ impl DesktopWorkspace {
             bail!("默认空间未保存，请重试");
         }
         // A read of the selected context preserves server object permission checks.
-        let path = format!("/api/auth/my/context?workspaceId={}", id(target)?);
+        let path = format!("/api/client/workspaces/context?workspaceId={}", id(target)?);
         let context: ContextResponse = self
             .request(session, reqwest::Method::GET, &path, Some(target), None)
             .await?;
@@ -164,7 +164,7 @@ impl DesktopWorkspace {
             .request(
                 session,
                 reqwest::Method::GET,
-                "/api/user/self",
+                "/api/client/profile",
                 Some(target),
                 None,
             )
@@ -198,7 +198,7 @@ impl DesktopWorkspace {
             .request(
                 session,
                 reqwest::Method::GET,
-                &format!("/billing/accounts/{target}"),
+                &format!("/api/client/workspaces/{target}/balance"),
                 Some(target),
                 None,
             )
@@ -337,7 +337,7 @@ impl DesktopWorkspaceController {
             .request(
                 session,
                 reqwest::Method::GET,
-                "/api/auth/my/context",
+                "/api/client/workspaces/context",
                 None,
                 None,
             )

@@ -52,6 +52,8 @@ pub struct ConnectionTestResult {
 struct SavedTest {
     tool: ToolId,
     key_id: String,
+    #[serde(default)]
+    connection_id: String,
     result: ConnectionTestResult,
 }
 impl ConnectionManager {
@@ -71,10 +73,11 @@ impl ConnectionManager {
                 let mut summary = record.summary();
                 if super::restore::verify_applied(&record).is_err() {
                     summary.state = "configuration_changed";
-                } else if let Some(test) = tests
-                    .iter()
-                    .find(|test| test.tool == record.tool && test.key_id == record.key_id)
-                {
+                } else if let Some(test) = tests.iter().find(|test| {
+                    test.tool == record.tool
+                        && test.key_id == record.key_id
+                        && test.connection_id == record.connection_id
+                }) {
                     summary.state = if test.result.passed {
                         "test_passed"
                     } else {
@@ -96,6 +99,7 @@ impl ConnectionManager {
             .gate
             .try_lock()
             .map_err(|_| anyhow::anyhow!("工具操作正在进行，请稍候"))?;
+        let _operation = self.operation_lock()?;
         if !request.confirmed {
             bail!("请先确认测试可能产生少量调用费用")
         }
@@ -182,7 +186,7 @@ impl ConnectionManager {
             .await;
         let (passed, detail) = match response {
             Err(_) => (false, "无法连接模型网关，请检查网络后手动重试".into()),
-            Ok(response) if !response.status().is_success() => (false, format!("模型请求失败（HTTP {}），请检查该连接的 Key、计费空间权限、余额和模型可用性后手动重试", response.status().as_u16())),
+            Ok(response) if !response.status().is_success() => (false, format!("模型请求失败（HTTP {}），请检查连接认证、计费空间权限、余额和模型可用性；认证失效时可清除连接后重新接入", response.status().as_u16())),
             Ok(response) => {
                 let body: Option<Value> = response.json().await.ok();
                 let verified = body.as_ref().is_some_and(|body| body["error"].is_null() && if anthropic {
@@ -210,6 +214,7 @@ impl ConnectionManager {
         tests.push(SavedTest {
             tool,
             key_id: record.key_id,
+            connection_id: record.connection_id,
             result: result.clone(),
         });
         atomic_write(

@@ -3,7 +3,7 @@
 Implements [parent issue #1](https://github.com/FitBBC/token-market-cli/issues/1).
 See [desktop login](desktop-login.md) for PKCE, registered-protocol return and
 private-session storage; see [inventory](tool-inventory.md) for discovery paths.
-The terminal CLI retains its separate per-setup loopback authorization flow.
+The CLI and desktop share the client protocol described in [ADR 0004](adr/0004-shared-client-key-lifecycle.md).
 
 Desktop login enters the platform Default Workspace. Current Workspace controls
 balance, recharge and the next Connect/Reconnect. Existing cards retain their
@@ -19,7 +19,8 @@ Changing workspace or logging out does not rewrite existing Agent configuration.
 | OpenClaw | `OPENAI_CHAT_COMPLETIONS` | All key-visible text-generation models; existing agent selection/allowlists stay in place |
 | OpenCode | `OPENAI_CHAT_COMPLETIONS` | All key-visible text-generation models; root model selections stay in place; JSONC comments/trailing commas retained |
 
-Connect obtains a device/tool key and its catalogue, then atomically publishes
+Connect reuses the saved account/workspace/device/tool key, or creates one on
+first use, then obtains its catalogue and atomically publishes
 configuration and private ownership receipts. It stops if required models or
 text-generation models are unavailable. It performs no generation request. Multi-model import
 adds choices without ranking them or selecting a preferred model.
@@ -37,16 +38,43 @@ fields are restored once, so subsequent unrelated edits remain user-owned. A mod
 that reappears can reuse its first baseline; if a released field was edited in the
 meantime, replacement stops safely for explicit repair rather than overwriting it.
 
-Reconnect captures the current account and workspace, obtains a new key/catalogue,
-then replaces the configuration before disabling only the old connection's exact
-key. Failure preserves the previous configuration/key and makes one cleanup
-attempt for an unused new key. Cross-account old-key disable failure is reported
-as **Old Key Not Disabled**, while the usable new connection remains active.
+Reconnect validates the saved credential against the authoritative server row for
+this environment/account/workspace/device/tool. Valid keys are reused; deleted
+or owner-reset keys can be replaced. Disabled/expired keys require platform action.
+Network, authentication, permissions, model catalogue and balance failures never
+imply credential replacement. Switching back to an earlier workspace reuses its
+saved key after validation.
+
+Client-only issuance stores one durable scope record. Local encrypted persistence
+precedes server confirmation, catalogue loading and configuration. A lost initial
+response recovers by rotating only the unconfirmed pending row, fenced by its
+generation. A lost confirmation response reuses the saved secret. No endpoint
+retrieves previously created plaintext. There is no Clear Connection action.
+
+If every local copy is lost, explicit scoped recovery issues a replacement and
+retires only exact predecessors from that scope after configuration succeeds.
+Repeated interrupted recovery retains its predecessor chain. Other devices,
+spaces, tools and owner-reset keys are untouched. Cross-process locks serialize
+local updates; a shared-login fence and final server inspection stop stale
+operations before configuration is committed.
+
+Reconfiguration starts a fresh untested connection even
+when its key is reused; previous model test results do not carry over.
+
+Keys, private connection receipts and app-owned backups use AES-256-GCM at rest;
+a small encryption key lives in macOS Keychain / Windows Credential Store / Linux Secret Service under
+a separate service from desktop login. This avoids OS-item size limits for large
+model catalogues. Key scopes also include the platform origin to separate test
+and production. Existing desktop records with verified ownership are retained. Old CLI history
+is neither imported nor deleted. Linux can use a passphrase-encrypted vault when
+Secret Service is unavailable; unreadable storage never becomes an empty cache. Public native summaries contain no credentials. Third-party tool
+configuration still contains the credential required by that tool. The existing
+platform hash-only storage and one-time creation response remain unchanged.
 
 Disconnect restores only owned fields, preserving unknown settings and later
 edits. Conflicts require a fresh explicit choice; an old whole-file backup never
-overwrites current work. It then makes at most one best-effort exact-key disable
-attempt; failure does not block local completion or create a retry queue. Existing
+overwrites current work. Saved keys remain available after disconnection, logout
+and app restarts. Disconnect makes no platform-disable request. Existing
 OpenCode `opencode.jsonc` remains the effective file, with no competing `.json`.
 Its edit/restore path uses [jsonc-parser's concrete syntax tree](https://docs.rs/jsonc-parser/0.34.0/jsonc_parser/cst/index.html), restricted to JSON plus comments/trailing commas. It edits changed fields while retaining unknown content; comments inside a deleted owned container remain as standalone comments.
 

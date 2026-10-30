@@ -4,38 +4,11 @@ use std::collections::BTreeMap;
 
 pub const DEFAULT_CONTEXT_WINDOW_TOKENS: u64 = 200_000;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModelPreset {
-    Recommended,
-    Fast,
-    Cheap,
-    Powerful,
-}
-
-impl ModelPreset {
-    pub fn parse(value: Option<&str>) -> Result<Self> {
-        match value.map(str::trim).filter(|value| !value.is_empty()) {
-            None | Some("recommended") => Ok(Self::Recommended),
-            Some("fast") => Ok(Self::Fast),
-            Some("cheap") => Ok(Self::Cheap),
-            Some("powerful") => Ok(Self::Powerful),
-            Some(other) => bail!("unsupported model preset: {other}"),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct ModelCapabilities {
     pub default_effort: &'static str,
     pub supported_efforts: &'static [&'static str],
     pub can_disable_thinking: bool,
-}
-
-pub fn resolve_model(preset: Option<&str>) -> Result<String> {
-    Ok(match ModelPreset::parse(preset)? {
-        ModelPreset::Recommended | ModelPreset::Powerful | ModelPreset::Cheap => "glm-5.3".into(),
-        ModelPreset::Fast => "deepseek-v4.1-flash".into(),
-    })
 }
 
 pub fn resolve_model_capabilities(model: &str) -> Result<ModelCapabilities> {

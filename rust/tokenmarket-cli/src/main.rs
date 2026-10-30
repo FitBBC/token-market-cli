@@ -1,49 +1,72 @@
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
+use std::io::{self, IsTerminal, Write};
 use tokenmarket_core::{
-    adapters,
-    auth::TokenMarketClient,
-    config::{gateway_api_base_url, list_managed_keys, tool_statuses},
-    models::{resolve_model, ToolConfig},
-    run_setup,
-    verification::{verify_token_market, VerificationTest},
+    client::{login_manager, require_session},
+    connections::{
+        ConnectContext, ConnectionManager, ConnectionTestRequest, CredentialLoss, DisconnectRequest,
+    },
+    desktop::DesktopSession,
+    desktop_workspace::DesktopWorkspace,
+    inventory::ToolInventory,
+    tool_id,
 };
 
-#[derive(Debug, Parser)]
+#[derive(Parser)]
 #[command(
     name = "tokenmarket",
     version,
-    about = "Configure Token Market for popular AI agent tools"
+    about = "Manage Token Market Agent connections"
 )]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
 }
-
-#[derive(Debug, Subcommand)]
+#[derive(Subcommand)]
 enum Commands {
-    /// Authorize Token Market and configure an agent tool
-    Setup {
-        tool: Option<String>,
+    /// Sign in once for both CLI and desktop; no tool Key is issued
+    Login {
         #[arg(long)]
-        model: Option<String>,
+        no_browser: bool,
     },
-    /// Check Token Market connectivity and local configuration
-    Doctor { tool: Option<String> },
-    /// Run configured request tests
+    /// End shared management login; tool configurations and credentials remain
+    Logout,
+    /// Show or switch the shared current workspace
+    Workspace { workspace_id: Option<String> },
+    /// Connect a tool without running a paid model test
+    #[command(alias = "setup")]
+    Connect {
+        tool: String,
+        #[arg(long)]
+        workspace: Option<String>,
+        #[arg(long)]
+        confirm_recovery: bool,
+    },
+    /// Explicitly update a tool using the current account/workspace
+    Reconnect {
+        tool: String,
+        #[arg(long)]
+        workspace: Option<String>,
+        #[arg(long)]
+        confirm_recovery: bool,
+        #[arg(long)]
+        confirm_rebind: bool,
+    },
+    /// Restore managed configuration while keeping the saved credential
+    Disconnect {
+        tool: String,
+        #[arg(long, value_parser = ["keep-current", "restore-original"])]
+        conflicts: Option<String>,
+    },
+    /// Show local connection ownership, configured models and test status
+    #[command(alias = "doctor")]
+    Status { tool: Option<String> },
+    /// Run one explicit model test; a small usage charge may apply
     Test {
         tool: String,
         #[arg(long)]
-        models: bool,
-        #[arg(long)]
-        chat: bool,
-        #[arg(long)]
-        stream: bool,
-        #[arg(long = "tool-call")]
-        tool_call: bool,
+        model: Option<String>,
     },
-    /// List keys managed by this CLI
-    Keys,
 }
 
 #[tokio::main]
@@ -53,186 +76,316 @@ async fn main() {
         std::process::exit(1);
     }
 }
-
+fn workspace_client(session: &DesktopSession) -> DesktopWorkspace {
+    DesktopWorkspace::new(
+        tokenmarket_core::config::console_api_base_url(),
+        session.web_origin.clone().unwrap_or_default(),
+    )
+}
 async fn run() -> Result<()> {
-    let cli = Cli::parse();
-    match cli.command {
-        Commands::Setup { tool, model } => {
-            let selected_tool = match tool {
-                Some(tool) => tool,
-                None => default_tool()?,
-            };
-            let outcome = run_setup(&selected_tool, model.as_deref(), |_| {}).await?;
-            println!("\n✅ Token Market configured for {}", outcome.tool_name);
-            println!("API Key: {} ({})", outcome.api_key_name, outcome.api_key_id);
-            println!("Model: {}", outcome.model);
-            println!("Config: {}", outcome.config_path);
-            if let Some(backup) = &outcome.backup_path {
-                println!("Backup: {backup}");
+    match Cli::parse().command {
+        Commands::Login { no_browser } => {
+            let login = login_manager();
+            if let Some(session) = login.restore().await? {
+                println!(
+                    "已登录：{} · {}",
+                    session.user.name, session.default_workspace.name
+                );
+                return Ok(());
             }
-            println!("\nTest results:");
-            for result in &outcome.tests {
-                println!(
-                    "- {}: {}",
-                    result.name,
-                    if result.passed { "passed" } else { "failed" }
-                );
+            let attempt = login.begin_remote().await?;
+            println!("请在浏览器完成登录：\n{}", attempt.authorize_url);
+            if !no_browser {
+                let _ = tokenmarket_core::auth::open_browser(&attempt.authorize_url);
             }
-            if outcome.requires_restart {
-                println!("\nNext: restart your agent tool if it is currently running, then select the Token Market model.");
-            }
-        }
-        Commands::Doctor { tool } => {
-            println!("Token Market gateway base URL: {}", gateway_api_base_url());
-            for status in tool_statuses() {
-                if let Some(tool) = &tool {
-                    if status.id.to_string() != *tool {
-                        continue;
-                    }
-                }
-                let key = tokenmarket_core::config::find_managed_key(status.id)?;
-                let config = adapters::get_adapter(status.id).read_config()?;
-                println!("\n{}", status.name);
-                println!(
-                    "- Local setup: {}",
-                    if key.is_some() {
-                        "registered"
-                    } else {
-                        "not registered"
-                    }
-                );
-                println!(
-                    "- Key id: {}",
-                    key.as_ref()
-                        .map(|key| key.key_id.clone())
-                        .unwrap_or_else(|| "-".into())
-                );
-                println!(
-                    "- Config file: {}",
-                    key.as_ref()
-                        .map(|key| key.config_path.clone())
-                        .unwrap_or(status.config_path)
-                );
-                println!(
-                    "- Config status: {}",
-                    if config.is_some() {
-                        "valid Token Market entry"
-                    } else {
-                        "missing Token Market entry"
-                    }
-                );
-                if let Some(config) = config {
-                    let protocol = adapters::get_adapter(status.id).protocol;
-                    let result =
-                        verify_token_market(&config, protocol, &[VerificationTest::Models])
-                            .await?
-                            .pop()
-                            .context("missing verification result")?;
+            loop {
+                if let Some(session) = login.poll_remote().await? {
                     println!(
-                        "- Model API: {}",
-                        if result.passed {
-                            "reachable".into()
-                        } else {
-                            format!(
-                                "failed{}",
-                                result
-                                    .detail
-                                    .map(|detail| format!(" ({detail})"))
-                                    .unwrap_or_default()
-                            )
-                        }
+                        "已登录：{} · {}",
+                        session.user.name, session.default_workspace.name
                     );
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            }
+        }
+        Commands::Logout => {
+            let remote = login_manager().logout().await?;
+            println!("已退出共享登录；已有工具连接仍保留。");
+            if !remote {
+                println!("服务端退出尚未确认，请检查网络后重试。");
+            }
+        }
+        Commands::Workspace { workspace_id } => {
+            let session = require_session().await?;
+            let api = workspace_client(&session);
+            let snapshot = if let Some(id) = workspace_id {
+                api.switch(&session, &id).await?
+            } else {
+                api.load(&session).await?
+            };
+            println!(
+                "当前空间：{} ({})",
+                snapshot.current_workspace.name, snapshot.current_workspace.id
+            );
+            for workspace in snapshot.switchable_workspaces {
+                println!("- {} ({})", workspace.name, workspace.id);
+            }
+            println!("已有工具仍使用各自接入的计费空间。");
+        }
+        Commands::Connect {
+            tool,
+            workspace,
+            confirm_recovery,
+        } => connect(&tool, workspace, false, confirm_recovery, false).await?,
+        Commands::Reconnect {
+            tool,
+            workspace,
+            confirm_recovery,
+            confirm_rebind,
+        } => connect(&tool, workspace, true, confirm_recovery, confirm_rebind).await?,
+        Commands::Disconnect { tool, conflicts } => {
+            let tool = tool_id(&tool)?;
+            let manager = ConnectionManager::current();
+            let record = manager
+                .list()?
+                .into_iter()
+                .find(|record| record.tool == tool)
+                .context("该工具尚未接入")?;
+            let result = manager
+                .disconnect(tool, &record.key_id, None, DisconnectRequest::default())
+                .await?;
+            if result.state == "conflicts" {
+                use tokenmarket_core::connections::{ConflictResolution, RestoreChoice};
+                let mut resolutions = Vec::new();
+                for conflict in &result.conflicts {
+                    let choice = match conflicts.as_deref() {
+                        Some("keep-current") => RestoreChoice::KeepCurrent,
+                        Some("restore-original") => RestoreChoice::RestoreOriginal,
+                        _ if io::stdin().is_terminal() => {
+                            loop {
+                                print!("文件 {} 的配置项 {} 已被修改：[1] 保留当前值 [2] 恢复接入前的值：", conflict.file + 1, conflict.field + 1); io::stdout().flush()?;
+                                let mut answer = String::new(); if io::stdin().read_line(&mut answer)? == 0 { bail!("未确认冲突处理，所有文件已保留") }
+                                match answer.trim() { "1" => break RestoreChoice::KeepCurrent, "2" => break RestoreChoice::RestoreOriginal, _ => continue }
+                            }
+                        }
+                        _ => bail!("配置包含接入后的修改，所有文件已保留；请交互运行，或明确指定 --conflicts keep-current / restore-original"),
+                    };
+                    resolutions.push(ConflictResolution {
+                        file: conflict.file,
+                        field: conflict.field,
+                        choice,
+                    });
+                }
+                let applied = manager
+                    .disconnect(
+                        tool,
+                        &record.key_id,
+                        None,
+                        DisconnectRequest {
+                            revision: result.revision,
+                            resolutions,
+                        },
+                    )
+                    .await?;
+                if applied.state != "disconnected" {
+                    bail!("配置在确认期间发生变化，请重新检查冲突")
+                }
+            }
+            println!("已取消接入；下次可继续接入。");
+        }
+        Commands::Status { tool } => {
+            let manager = ConnectionManager::current();
+            for entry in ToolInventory::current().list_with_connections(&manager)? {
+                if tool
+                    .as_ref()
+                    .is_some_and(|tool| tool != &entry.id.to_string())
+                {
+                    continue;
+                }
+                print!(
+                    "{}：{}",
+                    entry.name,
+                    if entry.installed {
+                        "已安装"
+                    } else {
+                        "未安装"
+                    }
+                );
+                if let Some(connection) = entry.connection {
+                    println!(" · {}", connection.state);
+                    if let (Some(owner), Some(space)) =
+                        (connection.owner, connection.bound_workspace)
+                    {
+                        println!(
+                            "  账号：{} · 计费空间：{}",
+                            owner["name"].as_str().unwrap_or(""),
+                            space["name"].as_str().unwrap_or("")
+                        );
+                    }
+                    println!("  模型：{}", connection.models.join(", "));
+                } else {
+                    println!(" · 尚未接入");
                 }
             }
         }
-        Commands::Test {
-            tool,
-            models,
-            chat,
-            stream,
-            tool_call,
-        } => {
-            let mut tests = Vec::new();
-            if models {
-                tests.push(VerificationTest::Models);
+        Commands::Test { tool, model } => {
+            let tool = tool_id(&tool)?;
+            let manager = ConnectionManager::current();
+            let record = manager
+                .list()?
+                .into_iter()
+                .find(|record| record.tool == tool)
+                .context("该工具尚未接入")?;
+            if model.is_none() && record.models.len() != 1 {
+                bail!(
+                    "请用 --model 指定一个已配置的模型：{}",
+                    record.models.join(", ")
+                )
             }
-            if chat {
-                tests.push(VerificationTest::Chat);
-            }
-            if stream {
-                tests.push(VerificationTest::Stream);
-            }
-            if tool_call {
-                tests.push(VerificationTest::ToolCall);
-            }
-            if tests.is_empty() {
-                tests = vec![
-                    VerificationTest::Models,
-                    VerificationTest::Chat,
-                    VerificationTest::Stream,
-                    VerificationTest::ToolCall,
-                ];
-            }
-
-            let id = tokenmarket_core::adapters::tool_id(&tool)?;
-            let adapter = adapters::get_adapter(id);
-            let key = tokenmarket_core::config::find_managed_key(id)?
-                .context("No managed configuration found. Run tokenmarket setup.")?;
-            let config = adapter
-                .read_config()?
-                .context("Token Market configuration is missing. Run tokenmarket setup.")?;
-            let results = verify_token_market(&config, adapter.protocol, &tests).await?;
-            for result in results {
-                println!(
-                    "{} {}{}",
-                    if result.passed { "✓" } else { "✗" },
-                    result.name,
-                    result
-                        .detail
-                        .map(|detail| format!(" — {detail}"))
-                        .unwrap_or_default()
-                );
-            }
-            let _ = key;
-        }
-        Commands::Keys => {
-            let records = list_managed_keys()?;
-            if records.is_empty() {
-                println!("No keys have been configured yet.");
-            }
-            for record in records {
-                println!("Tool: {}", record.tool);
-                println!("Key name: {}", record.key_name);
-                println!("Key id: {}", record.key_id);
-                println!("Created: {}", record.created_at);
-                println!("Revocable: yes (from the Token Market dashboard)");
-                println!();
+            println!(
+                "正在测试现有连接，可能产生少量费用；计费空间：{}",
+                record.bound_workspace.name
+            );
+            let result = manager
+                .test_connection(
+                    tool,
+                    &record.key_id,
+                    ConnectionTestRequest {
+                        confirmed: true,
+                        model,
+                    },
+                )
+                .await?;
+            println!(
+                "{}：{}",
+                if result.passed {
+                    "测试通过"
+                } else {
+                    "测试失败"
+                },
+                result.detail
+            );
+            if !result.passed {
+                bail!("模型测试未通过")
             }
         }
     }
     Ok(())
 }
-
-fn default_tool() -> Result<String> {
-    println!("Select a tool:");
-    for (index, adapter) in adapters::adapters().iter().enumerate() {
-        println!("{}. {}", index + 1, adapter.name);
+async fn connect(
+    tool: &str,
+    workspace: Option<String>,
+    reconnect: bool,
+    confirmed: bool,
+    confirm_rebind: bool,
+) -> Result<()> {
+    let tool = tool_id(tool)?;
+    let session = require_session().await?;
+    let api = workspace_client(&session);
+    let snapshot = if let Some(id) = workspace {
+        api.switch(&session, &id).await?
+    } else {
+        api.load(&session).await?
+    };
+    let inventory = ToolInventory::current();
+    let manager = ConnectionManager::current();
+    let path = inventory.config_path(tool);
+    let existing = manager
+        .list()?
+        .into_iter()
+        .find(|record| record.tool == tool);
+    if !reconnect && existing.is_some() {
+        bail!("该工具已有连接，请使用 tokenmarket reconnect {tool}")
     }
-    let mut input = String::new();
-    if std::io::stdin().read_line(&mut input).is_err() {
-        bail!("failed to read tool selection");
+    if reconnect && existing.is_none() {
+        bail!("该工具尚未接入，请使用 tokenmarket connect {tool}")
     }
-    let index: usize = input.trim().parse().context("enter a number")?;
-    let selected = adapters::adapters()
-        .get(index.checked_sub(1).context("selection out of range")?)
-        .context("selection out of range")?
-        .id;
-    Ok(selected.to_string())
-}
-
-#[allow(dead_code)]
-fn unused() -> Result<ToolConfig> {
-    let _ = resolve_model(None)?;
-    let _ = TokenMarketClient::new();
-    unimplemented!()
+    println!(
+        "接入账号：{} · 计费空间：{}",
+        session.user.name, snapshot.current_workspace.name
+    );
+    if let Some(previous) = &existing {
+        println!(
+            "原连接账号：{} · 原计费空间：{}",
+            previous.owner.name, previous.bound_workspace.name
+        );
+        if previous.owner.id != session.user.id
+            || previous.bound_workspace.id != snapshot.current_workspace.id
+        {
+            let accepted = if confirm_rebind {
+                true
+            } else if io::stdin().is_terminal() {
+                print!("确认将这条工具连接切换到以上接入账号和计费空间？[y/N] ");
+                io::stdout().flush()?;
+                let mut answer = String::new();
+                io::stdin().read_line(&mut answer)?;
+                matches!(answer.trim(), "y" | "Y" | "yes")
+            } else {
+                false
+            };
+            if !accepted {
+                bail!("原连接已保留；确认变更归属时可使用 --confirm-rebind")
+            }
+        }
+    }
+    let context = ConnectContext {
+        session_token: session.session_token,
+        owner_id: session.user.id,
+        workspace_id: snapshot.current_workspace.id,
+    };
+    let result = if let Some(existing) = &existing {
+        manager
+            .reconnect(
+                context.clone(),
+                tool,
+                &existing.key_id,
+                &inventory,
+                path.clone(),
+            )
+            .await
+            .map(|outcome| outcome.connection)
+    } else {
+        manager
+            .connect(context.clone(), tool, &inventory, path.clone())
+            .await
+    };
+    let connection = match result {
+        Ok(connection) => connection,
+        Err(error) => {
+            let Some(lost) = error.downcast_ref::<CredentialLoss>() else {
+                return Err(error);
+            };
+            let proceed = if confirmed {
+                true
+            } else if io::stdin().is_terminal() {
+                print!("本机保存的连接信息已丢失。重新接入成功后将替换这条连接的旧凭证，是否继续？[y/N] ");
+                io::stdout().flush()?;
+                let mut answer = String::new();
+                io::stdin().read_line(&mut answer)?;
+                matches!(answer.trim(), "y" | "Y" | "yes")
+            } else {
+                false
+            };
+            if !proceed {
+                bail!("原连接未改变；确认恢复时可使用 --confirm-recovery")
+            }
+            manager
+                .recover_connection(
+                    context,
+                    tool,
+                    existing.as_ref().map(|record| record.key_id.as_str()),
+                    &inventory,
+                    path,
+                    &lost.key_id,
+                )
+                .await?
+                .connection
+        }
+    };
+    println!(
+        "接入完成：{}；尚未进行模型测试。",
+        connection.models.join(", ")
+    );
+    Ok(())
 }

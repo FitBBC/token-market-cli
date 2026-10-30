@@ -1,9 +1,16 @@
 # ADR 0002 — CLI Workspace Selection and OpenClaw Scope
 
+> Client login, CLI and Key lifecycle rules are superseded by accepted ADR 0004. Historical behavior below is retained for context.
+
 Date: 2026-10-27
 
 ## Status
 Accepted
+
+2026-10-30: [ADR 0004](0004-shared-client-key-lifecycle.md), awaiting final design
+confirmation, replaces per-setup CLI authorization with the shared client login
+and workspace model. The legacy consent page will be removed. The OpenClaw/qclaw
+product-scope decision is unchanged.
 
 The desktop application's workspace-selection decision is superseded by
 [ADR 0003](0003-desktop-session-and-workspace-binding.md). The terminal CLI flow

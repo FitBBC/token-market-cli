@@ -1,3 +1,4 @@
+mod support;
 use tempfile::tempdir;
 use tokenmarket_core::{
     inventory::{HostPlatform, InstallationEnvironment, ToolInventory},
@@ -65,7 +66,7 @@ fn workbuddy_inventory_uses_the_installed_product_config_directory_and_explicit_
 
 #[tokio::test]
 async fn opencode_uses_existing_jsonc_and_preserves_it_when_platform_is_unavailable() {
-    use tokenmarket_core::connections::{ConnectContext, ConnectionManager};
+    use tokenmarket_core::connections::ConnectContext;
     let root = tempdir().unwrap();
     let bin = root.path().join("bin");
     std::fs::create_dir_all(&bin).unwrap();
@@ -95,7 +96,7 @@ async fn opencode_uses_existing_jsonc_and_preserves_it_when_platform_is_unavaila
         .find(|e| e.id == ToolId::OpenCode)
         .unwrap();
     assert_eq!(std::path::PathBuf::from(&entry.config_path), jsonc);
-    let manager = ConnectionManager::new(
+    let manager = support::manager(
         root.path().join("state"),
         "http://127.0.0.1:1".into(),
         "http://127.0.0.1:1".into(),
@@ -104,6 +105,7 @@ async fn opencode_uses_existing_jsonc_and_preserves_it_when_platform_is_unavaila
         .connect(
             ConnectContext {
                 session_token: "desktop".into(),
+                owner_id: "u1".into(),
                 workspace_id: "42".into()
             },
             ToolId::OpenCode,

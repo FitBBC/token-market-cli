@@ -13,6 +13,56 @@ fn escaped(value: &str) -> String {
     value.replace('~', "~0").replace('/', "~1")
 }
 impl MultiModelConfig {
+    pub fn credential(&self, gateway: &str) -> Result<Option<String>> {
+        let route = if self.tool == ToolId::OpenCode {
+            self.value.pointer("/provider/tokenmarket/options")
+        } else if self.tool == ToolId::OpenClaw {
+            self.value.pointer("/models/providers/tokenmarket")
+        } else {
+            None
+        };
+        if let Some(route) = route {
+            let base = route
+                .get("baseURL")
+                .or_else(|| route.get("baseUrl"))
+                .and_then(Value::as_str);
+            if base.is_some_and(|base| {
+                base.trim_end_matches('/') == format!("{}/v1", gateway.trim_end_matches('/'))
+            }) {
+                return Ok(route
+                    .get("apiKey")
+                    .and_then(Value::as_str)
+                    .filter(|key| !key.is_empty())
+                    .map(str::to_owned));
+            }
+        }
+        if self.tool == ToolId::WorkBuddy {
+            let rows = self
+                .value
+                .as_array()
+                .or_else(|| self.value.get("models").and_then(Value::as_array));
+            let mut found = None;
+            for row in rows.into_iter().flatten() {
+                if row.get("url").and_then(Value::as_str).is_some_and(|base| {
+                    base.trim_end_matches('/')
+                        == format!("{}/v1/chat/completions", gateway.trim_end_matches('/'))
+                }) {
+                    if let Some(key) = row
+                        .get("apiKey")
+                        .and_then(Value::as_str)
+                        .filter(|key| !key.is_empty())
+                    {
+                        if found.as_deref().is_some_and(|old| old != key) {
+                            bail!("现有配置包含多份连接凭证，请先确认实际连接")
+                        }
+                        found = Some(key.to_owned());
+                    }
+                }
+            }
+            return Ok(found);
+        }
+        Ok(None)
+    }
     pub fn parse(tool: ToolId, before: &Option<Vec<u8>>) -> Result<Self> {
         // OpenCode supports lossless JSONC; the other adapters retain strict JSON validation.
         let value: Value = match before {

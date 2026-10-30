@@ -1,7 +1,6 @@
 //! Read-only discovery of installed tools. No executable is launched during discovery.
 use crate::{
     adapters::{adapters, get_adapter},
-    config::ManagedKeyRecord,
     ToolId,
 };
 use anyhow::{bail, Context, Result};
@@ -107,7 +106,7 @@ impl InstallationEnvironment {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LegacyConnectionSummary {
+pub struct ConnectionProjection {
     pub state: &'static str,
     pub owner: Option<serde_json::Value>,
     pub bound_workspace: Option<serde_json::Value>,
@@ -126,7 +125,7 @@ pub struct ToolInventoryEntry {
     pub can_connect: bool,
     pub download_url: &'static str,
     pub config_path: String,
-    pub connection: Option<LegacyConnectionSummary>,
+    pub connection: Option<ConnectionProjection>,
 }
 
 pub struct ToolInventory {
@@ -140,15 +139,20 @@ impl ToolInventory {
         Self::new(InstallationEnvironment::current())
     }
     pub fn list(&self) -> Result<Vec<ToolInventoryEntry>> {
-        let records = self.records()?;
-        let desktop = crate::connections::ConnectionManager::new(
+        let manager = crate::connections::ConnectionManager::new(
             self.environment
                 .home
                 .join(".tokenmarket/desktop-connections"),
             String::new(),
             String::new(),
-        )
-        .summaries()?;
+        );
+        self.list_with_connections(&manager)
+    }
+    pub fn list_with_connections(
+        &self,
+        manager: &crate::connections::ConnectionManager,
+    ) -> Result<Vec<ToolInventoryEntry>> {
+        let desktop = manager.summaries()?;
         Ok(adapters()
             .into_iter()
             .map(|adapter| {
@@ -160,10 +164,8 @@ impl ToolInventory {
                     can_connect: installed,
                     download_url: official_download_url(adapter.id),
                     config_path: self.config_path(adapter.id).display().to_string(),
-                    connection: desktop
-                        .iter()
-                        .find(|(tool, _)| *tool == adapter.id)
-                        .map(|(_, r)| LegacyConnectionSummary {
+                    connection: desktop.iter().find(|(tool, _)| *tool == adapter.id).map(
+                        |(_, r)| ConnectionProjection {
                             state: r.state,
                             owner: Some(r.owner.clone()),
                             bound_workspace: Some(r.bound_workspace.clone()),
@@ -171,20 +173,8 @@ impl ToolInventory {
                             key_id: Some(r.key_id.clone()),
                             protocol: Some(r.protocol.clone()),
                             test_result: r.test_result.clone(),
-                        })
-                        .or_else(|| {
-                            records.iter().find(|r| r.tool == adapter.id).map(|r| {
-                                LegacyConnectionSummary {
-                                    state: "legacy",
-                                    owner: None,
-                                    bound_workspace: None,
-                                    models: vec![r.model.clone()],
-                                    key_id: None,
-                                    protocol: None,
-                                    test_result: None,
-                                }
-                            })
-                        }),
+                        },
+                    ),
                 }
             })
             .collect())
@@ -290,15 +280,6 @@ impl ToolInventory {
     }
     pub fn harness_application_path(&self) -> Option<PathBuf> {
         self.application_path(ToolId::DeepSeekHarness)
-    }
-    fn records(&self) -> Result<Vec<ManagedKeyRecord>> {
-        let path = self.environment.home.join(".tokenmarket/keys.json");
-        match fs::read_to_string(&path) {
-            Ok(text) if text.trim().is_empty() => Ok(vec![]),
-            Ok(text) => serde_json::from_str(&text).context("读取已有工具连接记录失败"),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
-            Err(e) => Err(e).context("读取已有工具连接记录失败"),
-        }
     }
 }
 

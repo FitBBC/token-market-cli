@@ -7,10 +7,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-struct Change {
-    path: PathBuf,
-    before: Option<Vec<u8>>,
-    after: Option<Vec<u8>>,
+pub(super) struct Change {
+    pub path: PathBuf,
+    pub before: Option<Vec<u8>>,
+    pub after: Option<Vec<u8>>,
 }
 pub(super) struct RestorePlan {
     changes: Vec<Change>,
@@ -28,7 +28,10 @@ fn read(path: &Path) -> Result<Option<Vec<u8>>> {
     }
 }
 /// Upgrade ambiguous version-1 receipts using only their original owned-field baseline.
-pub(super) fn baseline_receipts(record: &ConnectionRecord) -> Result<Vec<super::FileReceipt>> {
+pub(super) fn baseline_receipts(
+    record: &ConnectionRecord,
+    private: &super::private_storage::PrivateStorage,
+) -> Result<Vec<super::FileReceipt>> {
     if !matches!(record.version, 1 | 2) {
         bail!("连接记录版本不支持安全恢复")
     }
@@ -42,7 +45,7 @@ pub(super) fn baseline_receipts(record: &ConnectionRecord) -> Result<Vec<super::
                     .context("旧连接缺少原始恢复基线")?;
                 Some(
                     Format::for_tool(record.tool, &receipt.path)?
-                        .parse(Some(&read(backup)?.context("旧连接恢复基线不可读")?))?,
+                        .parse(Some(&private.read(backup).context("旧连接恢复基线不可读")?))?,
                 )
             } else {
                 None
@@ -63,8 +66,9 @@ pub(super) fn baseline_receipts(record: &ConnectionRecord) -> Result<Vec<super::
 pub(super) fn retire_removed_fields(
     record: &ConnectionRecord,
     files: &mut [super::configuration::PreparedFile],
+    private: &super::private_storage::PrivateStorage,
 ) -> Result<()> {
-    let baseline = baseline_receipts(record)?;
+    let baseline = baseline_receipts(record, private)?;
     for old in &baseline {
         let file = files
             .iter_mut()
@@ -108,6 +112,7 @@ pub(super) fn retire_removed_fields(
 pub(super) fn prepare(
     record: &ConnectionRecord,
     request: &DisconnectRequest,
+    private: &super::private_storage::PrivateStorage,
 ) -> Result<RestorePlan> {
     let mut changes = vec![];
     let mut hash = Sha256::new();
@@ -142,9 +147,13 @@ pub(super) fn prepare(
                 .backup_path
                 .as_ref()
                 .context("旧连接缺少原始恢复基线，未执行恢复")?;
-            Some(format.parse(Some(
-                &read(backup)?.context("旧连接恢复基线不可读，未执行恢复")?,
-            ))?)
+            Some(
+                format.parse(Some(
+                    &private
+                        .read(backup)
+                        .context("旧连接恢复基线不可读，未执行恢复")?,
+                ))?,
+            )
         } else {
             None
         };
@@ -470,18 +479,24 @@ fn json_toml(value: &Value) -> Result<toml_edit::Item> {
     doc.as_table_mut().remove("value").context("恢复值无效")
 }
 impl RestorePlan {
-    pub fn commit(&self, store: &Path, original_store: &[u8], records: &[u8]) -> Result<()> {
+    pub fn commit(
+        &self,
+        store: &Path,
+        original_store: &[u8],
+        records: &[u8],
+        extra: &[Change],
+    ) -> Result<()> {
         if read(store)?.as_deref() != Some(original_store) {
             bail!("连接记录已改变，请刷新后重试")
         }
         // Recheck every touched file before writing any of them.
-        for change in &self.changes {
+        for change in self.changes.iter().chain(extra) {
             if read(&change.path)? != change.before {
                 bail!("配置已改变，请重新确认恢复")
             }
         }
         let mut written: Vec<&Change> = vec![];
-        for change in &self.changes {
+        for change in self.changes.iter().chain(extra) {
             if change.before == change.after {
                 continue;
             }
@@ -582,4 +597,44 @@ fn external_credential_content(value: &Value) -> bool {
             .get(name)
             .is_some_and(|value| !value.as_object().is_some_and(|object| object.is_empty()))
     })
+}
+
+#[cfg(all(test, unix))]
+mod transaction_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn record_commit_failure_restores_configuration_and_the_cleared_credential_file() {
+        let root = tempfile::tempdir().unwrap();
+        let state = root.path().join("state");
+        fs::create_dir(&state).unwrap();
+        let store = state.join("connections.json");
+        fs::write(&store, b"active-record").unwrap();
+        let config = root.path().join("config");
+        fs::write(&config, b"active-config").unwrap();
+        let cache = root.path().join("credentials");
+        fs::write(&cache, b"saved-credential").unwrap();
+        let plan = RestorePlan {
+            changes: vec![Change {
+                path: config.clone(),
+                before: Some(b"active-config".to_vec()),
+                after: Some(b"original-config".to_vec()),
+            }],
+            revision: String::new(),
+            conflicts: vec![],
+        };
+        let extra = [Change {
+            path: cache.clone(),
+            before: Some(b"saved-credential".to_vec()),
+            after: Some(b"cleared".to_vec()),
+        }];
+        fs::set_permissions(&state, fs::Permissions::from_mode(0o500)).unwrap();
+        let result = plan.commit(&store, b"active-record", b"no-records", &extra);
+        fs::set_permissions(&state, fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(result.is_err());
+        assert_eq!(fs::read(config).unwrap(), b"active-config");
+        assert_eq!(fs::read(cache).unwrap(), b"saved-credential");
+        assert_eq!(fs::read(store).unwrap(), b"active-record");
+    }
 }

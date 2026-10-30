@@ -50,7 +50,7 @@ Expired grants require a new browser authorization.
 that desktop grant's logout route. If remote revocation fails, the UI explicitly
 reports that it is unconfirmed while local logout remains complete. A private
 storage deletion failure is reported as a failed logout. Switching account uses
-this logout followed by browser login. Agent configs, legacy key records, backups,
+this logout followed by browser login. Agent configs, saved tool credentials, backups,
 and any recorded connection ownership are never read or rewritten by lifecycle
 operations. Legacy records without ownership remain unknown; current login must
 not be used to infer their owning account or Bound Workspace.

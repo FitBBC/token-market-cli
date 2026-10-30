@@ -9,6 +9,7 @@
   let disconnecting = false;
   let pendingDisconnect = null;
   let pendingReconnect = null;
+  let pendingRecovery = null;
   let generation = 0;
   let entries = [];
   let selectedTool = null, filter = 'all', search = '';
@@ -39,7 +40,7 @@
   }
   function connectionLabel(entry) {
     if (!entry.connection) return entry.installed ? '已安装，尚未接入' : '未安装';
-    return ({legacy:'旧版连接，归属未知', configuration_changed:'配置已改变或不可用', configured_untested:'已配置，未测试', test_passed:'文本输出测试通过', test_failed:'文本输出测试失败'})[entry.connection.state] || '已配置，未测试';
+    return ({configuration_changed:'配置已改变或不可用', configured_untested:'已配置，未测试', test_passed:'文本输出测试通过', test_failed:'文本输出测试失败'})[entry.connection.state] || '已配置，未测试';
   }
   function stateBadge(entry) { return text('span', connectionLabel(entry), `tool-state ${entry.connection?.state || 'unconnected'}`); }
   function toolIcon(entry) {
@@ -58,7 +59,7 @@
   async function connect(entry) {
     const current = generation;
     try {
-      if (entry.connection && entry.connection.state !== 'legacy') { await beginReconnect(entry); return; }
+      if (entry.connection) { await beginReconnect(entry); return; }
       await invoke('prepare_tool_connect', {tool:entry.id});
       if (!authenticated || current !== generation) return;
       const event = new CustomEvent('tokenmarket-connect-request', {detail:{tool:entry.id}, cancelable:true});
@@ -69,7 +70,7 @@
     const testing = Boolean(window.TokenMarketConnectionTests?.busy);
     const locked = loading || connecting || disconnecting || testing;
     const group = text('div', '', 'tool-actions');
-    if (entry.connection && entry.connection.state !== 'legacy') {
+    if (entry.connection) {
       group.append(actionButton('打开工具', 'primary tool-launch', () => launch(entry), !entry.installed || locked));
       if (detailed) {
         const test = actionButton('测试连接', 'tool-test', () => window.dispatchEvent(new CustomEvent('tokenmarket-test-request', {detail:{id:entry.id,name:entry.name,connection:entry.connection}})), locked || entry.connection.state === 'configuration_changed');
@@ -78,7 +79,7 @@
         const menu = text('details', '', 'tool-menu'); menu.append(text('summary', '管理连接'));
         const options = text('div', '', 'tool-menu-options');
         options.append(actionButton('重新接入', 'tool-connect', () => { menu.open = false; void connect(entry); }, !entry.canConnect || locked));
-        options.append(actionButton('取消接入', 'danger tool-disconnect', () => { menu.open = false; confirmDisconnectStart(entry); }, locked));
+        options.append(actionButton('取消接入', 'tool-disconnect', () => { menu.open = false; confirmDisconnectStart(entry); }, locked));
         menu.append(options); group.append(menu);
       }
     } else if (!entry.connection && entry.installed) {
@@ -97,14 +98,14 @@
   }
   function renderDetail(entry) {
     detailRoot.replaceChildren();
-    const connection = entry.connection, legacy = connection?.state === 'legacy';
+    const connection = entry.connection;
     const header = text('header', '', 'page-heading tool-detail-heading');
     const title = text('div', '', 'tool-detail-title'); const names = text('div'); names.append(text('h1', entry.name), text('p', entry.installed ? '已检测到本机安装' : '尚未安装')); title.append(toolIcon(entry), names);
     const back = actionButton('返回工具列表', 'quiet', () => window.TokenMarketShell.show('tools')); header.append(title, back); detailRoot.append(header); const operation = text('div', message.textContent, `tools-feedback tool-operation-status${message.classList.contains('error') ? ' error' : ''}`); operation.setAttribute('role', 'status'); detailRoot.append(operation);
     if (connection) {
-      const notice = text('div', '', `notice ${legacy || connection.state === 'configuration_changed' ? 'warning' : connection.state === 'test_failed' ? 'error' : connection.state === 'test_passed' ? 'success' : ''}`);
+      const notice = text('div', '', `notice ${connection.state === 'configuration_changed' ? 'warning' : connection.state === 'test_failed' ? 'error' : connection.state === 'test_passed' ? 'success' : ''}`);
       notice.append(text('h3', connectionLabel(entry)));
-      const note = legacy ? '检测到旧版连接记录，所属账号与计费空间未知。请在原工具与平台中核对配置。' : connection.state === 'configuration_changed' ? '当前配置与接入记录不一致，测试已停用。请检查配置或重新接入。' : connection.state === 'test_passed' ? '仅验证一次完整文本输出；流式、工具调用与 Agent 运行表现请在工具中确认。' : connection.state === 'test_failed' ? '未通过文本输出测试。请检查权限、余额与模型可用性后重试。' : '配置已保存，尚未发起模型测试。可以先打开工具；需要时再确认费用并测试。';
+      const note = connection.state === 'configuration_changed' ? '当前配置与接入记录不一致，测试已停用。请检查配置或重新接入。' : connection.state === 'test_passed' ? '仅验证一次完整文本输出；流式、工具调用与 Agent 运行表现请在工具中确认。' : connection.state === 'test_failed' ? '未通过文本输出测试。请检查权限、余额与模型可用性后重试。' : '配置已保存，尚未发起模型测试。可以先打开工具；需要时再确认费用并测试。';
       notice.append(text('p', note)); detailRoot.append(notice);
     } else detailRoot.append(text('p', entry.installed ? '工具已安装，接入后即可使用 Token Market 模型。' : '先安装工具，再返回重新检测和接入。', 'notice'));
     detailRoot.append(actions(entry, true));
@@ -121,7 +122,7 @@
     if (entry.id === 'openclaw') guidance.append(text('p', 'OpenClaw 需要重启 Gateway 或会话，已有模型白名单仍可能限制可选模型。'));
     if (entry.id === 'opencode') guidance.append(text('p', '项目或运行时配置可能覆盖全局模型设置。'));
     left.append(guidance);
-    const context = text('section', '', 'sheet'); context.append(text('h2', '连接归属'), detailRow('所属账号', legacy ? '未知（旧版记录）' : connection?.owner?.name || '尚未接入'), detailRow('计费空间', legacy ? '未知（旧版记录）' : connection?.boundWorkspace?.name || '尚未接入'), detailRow('安装状态', entry.installed ? '已安装' : '未安装'));
+    const context = text('section', '', 'sheet'); context.append(text('h2', '连接归属'), detailRow('所属账号', connection?.owner?.name || '尚未接入'), detailRow('计费空间', connection?.boundWorkspace?.name || '尚未接入'), detailRow('安装状态', entry.installed ? '已安装' : '未安装'));
     context.append(text('p', '已有连接保留自己的计费空间。需要更换归属时，请确认重新接入。'));
     grid.append(left, context); detailRoot.append(grid);
   }
@@ -147,7 +148,7 @@
       const top = text('div', '', 'tool-card-top'); const title = text('div', '', 'tool-title'); title.append(text('h3', entry.name), stateBadge(entry)); top.append(toolIcon(entry), title);
       const content = text('div', '', 'tool-details');
       if (entry.connection) {
-        content.append(text('p', entry.connection.state === 'legacy' ? '计费空间未知（旧版记录）' : `计费空间  ${entry.connection.boundWorkspace.name}`, 'tool-description'));
+        content.append(text('p', `计费空间  ${entry.connection.boundWorkspace.name}`, 'tool-description'));
         const count = entry.connection.models.length; content.append(text('p', count === 1 ? entry.connection.models[0] : `${count} 个已配置模型`, 'tool-model-summary'));
       } else content.append(text('p', entry.installed ? '接入时将使用当前空间' : '安装后返回此处重新检测', 'tool-description'));
       const footer = text('div', '', 'tool-card-footer'); footer.append(actionButton(entry.connection ? '连接详情' : '了解工具', 'quiet tool-detail', () => showDetail(entry)), actions(entry));
@@ -180,11 +181,12 @@
   disconnectConfirm.className = 'disconnect-confirm-dialog';
   document.body.append(disconnectConfirm);
   function confirmDisconnectStart(entry) {
-    disconnectConfirm.replaceChildren(text('h3', '确认取消接入'), text('p', `将恢复 ${entry.name} 本次连接管理的配置，并尝试停用对应 Key。计费空间：${entry.connection.boundWorkspace.name}。`));
+    disconnectConfirm.replaceChildren(text('h3', '确认取消接入'), text('p', `将恢复 ${entry.name} 本次连接管理的配置，并停止该工具的接入。计费空间：${entry.connection.boundWorkspace.name}。`));
     const buttons = text('div', '', 'tool-actions');
     buttons.append(actionButton('保留连接', '', () => disconnectConfirm.close()), actionButton('确认取消接入', 'danger', () => { disconnectConfirm.close(); runDisconnect(entry, {revision:null,resolutions:[]}); }));
     disconnectConfirm.append(buttons); disconnectConfirm.showModal();
   }
+  window.addEventListener('current-workspace-changed', () => { if (disconnectConfirm.open) disconnectConfirm.close(); });
   const disconnectDialog = document.createElement('dialog'); disconnectDialog.className = 'disconnect-dialog';
   disconnectDialog.innerHTML = '<h3>配置与恢复内容发生冲突</h3><p>检测到接入后的修改。请选择保留当前内容，或恢复接入前的原值。为保护凭据，此处只显示文件与配置项编号；取消将保留连接和所有文件。</p><div class="disconnect-conflicts"></div><div class="tool-actions"><button class="disconnect-cancel">暂不取消接入</button><button class="primary disconnect-confirm" disabled>确认恢复并取消接入</button></div>';
   const confirmDisconnect = disconnectDialog.querySelector('.disconnect-confirm');
@@ -207,6 +209,8 @@
       if (!authenticated || current !== generation) return;
       if (outcome.state === 'conflicts') {
         pendingDisconnect = {entry,outcome};
+        confirmDisconnect.textContent = '确认恢复并取消接入';
+        disconnectDialog.querySelector('.disconnect-cancel').textContent = '暂不取消接入';
         const choices = disconnectDialog.querySelector('.disconnect-conflicts'); choices.replaceChildren();
         confirmDisconnect.disabled = true;
         outcome.conflicts.forEach(conflict => {
@@ -220,14 +224,14 @@
       } else {
         await refresh(true);
         if (!authenticated || current !== generation) return;
-        const detail = outcome.remoteDisabled ? `${entry.name} 已在本地取消接入，原 Key 已停用。` : `${entry.name} 已在本地取消接入；原 Key 未确认停用，请在平台 Key 管理中检查。`;
+        const detail = `${entry.name} 已取消接入。`;
         feedback(detail); showResult('取消接入完成', detail);
       }
     } catch (error) { if (authenticated && current === generation) { feedback(String(error), true); showResult('取消接入未完成', String(error)); } }
     finally { disconnecting = false; if (authenticated && current === generation) render(); }
   }
   const reconnectDialog = document.createElement('dialog'); reconnectDialog.className = 'reconnect-dialog';
-  reconnectDialog.innerHTML = '<h3>确认重新接入</h3><p class="reconnect-from"></p><p class="reconnect-to"></p><p>将使用当前登录账号与当前空间取得新 Key 并重新读取模型目录。新配置保存后才尝试停用旧 Key；跨账号可能无权停用旧 Key。</p><div class="tool-actions"><button class="reconnect-cancel">取消</button><button class="primary reconnect-confirm">确认重新接入</button></div>';
+  reconnectDialog.innerHTML = '<h3>确认重新接入</h3><p class="reconnect-from"></p><p class="reconnect-to"></p><p>将使用当前账号与空间更新此工具的连接，并重新读取可用模型。接入本身不会发起模型测试。</p><div class="tool-actions"><button class="reconnect-cancel">取消</button><button class="primary reconnect-confirm">确认重新接入</button></div>';
   document.body.append(reconnectDialog);
   reconnectDialog.querySelector('.reconnect-cancel').onclick = () => { pendingReconnect = null; reconnectDialog.close(); };
   reconnectDialog.addEventListener('cancel', () => { pendingReconnect = null; });
@@ -288,7 +292,17 @@
     if (!supportedConnections[tool]) return;
     event.preventDefault(); confirmInitialConnect(tool).catch(error => { if (authenticated) showResult('无法确认接入空间', String(error)); });
   });
-  async function runConnect(tool, replacement = null) {
+  const recoveryDialog = document.createElement('dialog'); recoveryDialog.className = 'recovery-dialog';
+  recoveryDialog.innerHTML = '<h3>确认恢复连接</h3><p>本机保存的连接信息已丢失。确认后将重新建立此工具的连接，并在接入成功后替换对应的旧凭证。</p><p class="recovery-scope"></p><p>其他账号、空间和工具的连接不受影响。</p><div class="tool-actions"><button class="recovery-cancel">暂不恢复</button><button class="primary recovery-confirm">确认恢复并接入</button></div>';
+  document.body.append(recoveryDialog);
+  recoveryDialog.querySelector('.recovery-cancel').onclick = () => { pendingRecovery = null; recoveryDialog.close(); };
+  recoveryDialog.addEventListener('cancel', () => { pendingRecovery = null; });
+  recoveryDialog.querySelector('.recovery-confirm').onclick = () => {
+    const pending = pendingRecovery; pendingRecovery = null; recoveryDialog.close();
+    if (pending && authenticated && pending.generation === generation) void runConnect(pending.tool, pending.replacement, pending.target);
+  };
+  window.addEventListener('current-workspace-changed', () => { pendingRecovery = null; if (recoveryDialog.open) recoveryDialog.close(); });
+  async function runConnect(tool, replacement = null, recovery = null) {
     const name = supportedConnections[tool];
     if (!name || !authenticated || connecting || disconnecting || window.TokenMarketConnectionTests?.busy) return;
     if (!replacement && entries.find(entry => entry.id === tool)?.connection) {
@@ -298,15 +312,14 @@
     connecting = true; render(); feedback(`正在接入 ${name}，请稍候…`);
     try {
       const result = replacement
-        ? await invoke('reconnect_tool', {tool,expectedKeyId:replacement.entry.connection.keyId,expectedOwnerId:replacement.preview.currentOwner.id,expectedWorkspaceId:replacement.preview.currentWorkspace.id})
-        : await invoke('connect_tool', {tool});
+        ? await invoke('reconnect_tool', {tool,expectedKeyId:replacement.entry.connection.keyId,expectedOwnerId:replacement.preview.currentOwner.id,expectedWorkspaceId:replacement.preview.currentWorkspace.id,recovery})
+        : await invoke('connect_tool', {tool,recovery});
       const connected = replacement ? result.connection : result;
-      const cleanupNotice = replacement ? (result.oldKeyDisabled ? ' 原 Key 已停用。' : ' 旧 Key 未停用，请在平台 Key 管理中检查；新连接已保存。') : '';
       if (!authenticated || actionGeneration !== generation) return;
       await refresh(true);
       if (!authenticated || actionGeneration !== generation) return;
       const modelNotice = !['claude-code','codex'].includes(tool) ? `已导入 ${connected.models.length} 个兼容模型，尚未测试。` : `已配置 ${connected.models[0]}，尚未测试。`;
-      feedback(`${name} ${modelNotice}${cleanupNotice}`);
+      feedback(`${name} ${modelNotice}`);
       launchTool = tool;
       dialog.querySelector('h3').textContent = `${name} 已接入`;
       const guidance = {
@@ -317,8 +330,18 @@
       };
       dialog.querySelector('.restart-notice').textContent = `${modelNotice} ${guidance[tool] || `现有 ${name} 会话需要退出后重新启动，新终端将读取接入配置。`}`;
       dialog.querySelector('.launch').textContent = ['deepseek-harness','workbuddy'].includes(tool) ? `打开 ${name}` : `打开工具 / 终端运行 ${name}`;
-      dialog.querySelector('.launch-error').textContent = cleanupNotice; dialog.showModal();
-    } catch(error) { if (authenticated && actionGeneration === generation) { feedback(String(error), true); showResult('接入未完成', String(error)); } }
+      dialog.querySelector('.launch-error').textContent = ''; dialog.showModal();
+    } catch(error) {
+      if (authenticated && actionGeneration === generation) {
+        if (error && typeof error === 'object' && error.recovery) {
+          pendingRecovery = {tool,replacement,target:error.recovery,generation:actionGeneration};
+          recoveryDialog.querySelector('.recovery-scope').textContent = `账号：${error.recovery.ownerName} · 计费空间：${error.recovery.workspaceName}`;
+          recoveryDialog.showModal(); feedback('请确认是否恢复这条连接。');
+        } else {
+          const message = error?.message || String(error); feedback(message, true); showResult('接入未完成', message);
+        }
+      }
+    }
     finally { connecting = false; if (authenticated && actionGeneration === generation) render(); }
   }
   window.addEventListener('tokenmarket-test-busy', render);
@@ -341,7 +364,7 @@
       authenticated = value; generation += 1;
       window.dispatchEvent(new CustomEvent('tokenmarket-tools-auth', {detail:{authenticated:value}}));
       if (value) refresh();
-      else { if (disconnectConfirm.open) disconnectConfirm.close(); if (resultDialog.open) resultDialog.close(); if (reconnectDialog.open) reconnectDialog.close(); pendingReconnect = null; if (dialog.open) dialog.close(); if (disconnectDialog.open) disconnectDialog.close(); pendingDisconnect = null; entries = []; selectedTool = null; detailRoot.replaceChildren(); pendingConnect = null; if (connectDialog.open) connectDialog.close(); list.replaceChildren(); feedback(''); }
+      else { pendingRecovery = null; if (recoveryDialog.open) recoveryDialog.close(); if (disconnectConfirm.open) disconnectConfirm.close(); if (resultDialog.open) resultDialog.close(); if (reconnectDialog.open) reconnectDialog.close(); pendingReconnect = null; if (dialog.open) dialog.close(); if (disconnectDialog.open) disconnectDialog.close(); pendingDisconnect = null; entries = []; selectedTool = null; detailRoot.replaceChildren(); pendingConnect = null; if (connectDialog.open) connectDialog.close(); list.replaceChildren(); feedback(''); }
     },
   };
 })();

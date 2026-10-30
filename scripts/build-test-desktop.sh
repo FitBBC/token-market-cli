@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Low-level Tauri build. Use build-test-clients.sh to deliver a CLI/App pair
+# with the stable shared keychain signing identity and verified DMG.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 config_file=$(mktemp "${TMPDIR:-/tmp}/token-market-test-config.XXXXXX.json")

@@ -22,6 +22,8 @@ module.exports = async function openFixture(browser, options = {}) {
     window.__TAURI__ = {event:{listen:async (name,fn) => { (fixture.events[name] ||= []).push(fn); return () => {}; }},core:{invoke:async (command,args = {}) => {
       fixture.calls.push({command,args:clone(args)});
       const entry = fixture.entries.find(t=>t.id===args.tool);
+      if (options.credentialLost && ['connect_tool','reconnect_tool'].includes(command) && !args.recovery) throw {message:'本机保存的连接信息已丢失',recovery:{keyId:'missing-fixture',ownerId:user.id,workspaceId:fixture.current.id,ownerName:user.name,workspaceName:fixture.current.name}};
+      if (args.recovery && (args.recovery.ownerId!==user.id || args.recovery.workspaceId!==fixture.current.id)) throw Error('账号或空间已改变');
       switch(command) {
         case 'desktop_login_status': case 'refresh_desktop_session': return clone(loginStatus());
         case 'desktop_workspace_context': if(fixture.workspaceError)throw Error('空间读取失败');return clone(workspace());
@@ -30,9 +32,9 @@ module.exports = async function openFixture(browser, options = {}) {
         case 'prepare_tool_connect': return null;
         case 'connect_tool': entry.connection=connection(entry.id);entry.connection.boundWorkspace={id:fixture.current.id,name:fixture.current.name};return clone(entry.connection);
         case 'prepare_tool_reconnect': return {oldOwner:clone(entry.connection.owner),oldWorkspace:clone(entry.connection.boundWorkspace),currentOwner:{id:user.id,name:user.name},currentWorkspace:{id:fixture.current.id,name:fixture.current.name}};
-        case 'reconnect_tool': entry.connection={...connection(entry.id),boundWorkspace:{id:fixture.current.id,name:fixture.current.name}};return {connection:clone(entry.connection),oldKeyDisabled:true};
+        case 'reconnect_tool': entry.connection={...connection(entry.id),boundWorkspace:{id:fixture.current.id,name:fixture.current.name}};return {connection:clone(entry.connection),keyReused:true};
         case 'test_tool_connection': entry.connection.state=fixture.testPassed?'test_passed':'test_failed';entry.connection.testResult={model:args.request.model,detail:'隔离夹具响应',testedAt:'2026-10-29T00:00:00Z'};return {passed:fixture.testPassed,detail:'隔离夹具响应'};
-        case 'disconnect_tool': if(fixture.conflicts && !args.request.revision)return {state:'conflicts',revision:'receipt-revision',conflicts:[{file:0,field:1}]};entry.connection=null;return {state:'disconnected',remoteDisabled:true};
+        case 'disconnect_tool': if(fixture.conflicts && !args.request.revision)return {state:'conflicts',revision:'receipt-revision',conflicts:[{file:0,field:1}]};entry.connection=null;return {state:'disconnected',keyRetained:true};
         case 'launch_connected_tool': case 'download_tool': case 'open_desktop_account_page': case 'reopen_desktop_login': return null;
         case 'logout_desktop_session': fixture.signedIn=false;return {};
         case 'begin_desktop_login': fixture.pending={authorize_url:'https://example.invalid/login'};return clone(fixture.pending);

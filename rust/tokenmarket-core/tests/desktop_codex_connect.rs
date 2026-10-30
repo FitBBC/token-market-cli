@@ -1,7 +1,8 @@
+mod support;
 use serde_json::json;
 use tempfile::tempdir;
 use tokenmarket_core::{
-    connections::{ConnectContext, ConnectionManager},
+    connections::ConnectContext,
     inventory::{HostPlatform, InstallationEnvironment, ToolInventory},
     ToolId,
 };
@@ -65,12 +66,7 @@ async fn platform(
                 )
                 .await
                 .unwrap();
-            if fail_key
-                || first.contains("/disable ")
-                || (first.starts_with("GET ")
-                    && models["data"][0]["id"] == "glm-5.3"
-                    && models["wait_for_cleanup"] != true)
-            {
+            if fail_key || first.starts_with("GET ") {
                 break;
             }
         }
@@ -99,6 +95,7 @@ fn inventory(root: &std::path::Path) -> ToolInventory {
 fn context() -> ConnectContext {
     ConnectContext {
         session_token: "desktop-secret".into(),
+        owner_id: "u1".into(),
         workspace_id: "42".into(),
     }
 }
@@ -115,7 +112,7 @@ async fn codex_connect_configures_responses_and_records_bound_workspace_without_
         false,
     )
     .await;
-    let manager = ConnectionManager::new(
+    let manager = support::manager(
         root.path().join(".tokenmarket/desktop-connections"),
         url.clone(),
         url.clone(),
@@ -164,7 +161,7 @@ async fn codex_connect_configures_responses_and_records_bound_workspace_without_
     assert_eq!(records[0].credential(), "sk-fixture");
     let receipt = &records[0].receipts[0];
     assert_eq!(
-        std::fs::read_to_string(receipt.backup_path.as_ref().unwrap()).unwrap(),
+        String::from_utf8(support::read_private(receipt.backup_path.as_ref().unwrap())).unwrap(),
         original
     );
     let field = receipt
@@ -200,7 +197,7 @@ async fn codex_invalid_toml_or_conflicting_auth_fails_before_issuance_or_local_w
         let path = root.path().join("config.toml");
         std::fs::write(&path, original).unwrap();
         let directory = root.path().join("records");
-        let manager = ConnectionManager::new(
+        let manager = support::manager(
             directory.clone(),
             "http://127.0.0.1:1".into(),
             "http://127.0.0.1:1".into(),
@@ -220,14 +217,14 @@ async fn codex_invalid_toml_or_conflicting_auth_fails_before_issuance_or_local_w
 }
 
 #[tokio::test]
-async fn codex_missing_glm_preserves_the_previous_provider_and_cleans_only_the_new_key() {
+async fn codex_missing_glm_preserves_the_previous_provider_and_retains_the_new_key() {
     let root = tempdir().unwrap();
     let inventory = inventory(root.path());
     let config = root.path().join("config.toml");
     let original = "model = 'keep'\nmodel_provider = 'other'\n";
     std::fs::write(&config, original).unwrap();
     let (url, server) = platform(json!({"data":[{"id":"other-model"}]}), false).await;
-    let manager = ConnectionManager::new(root.path().join("records"), url.clone(), url);
+    let manager = support::manager(root.path().join("records"), url.clone(), url);
     let error = manager
         .connect(context(), ToolId::Codex, &inventory, config.clone())
         .await
@@ -239,8 +236,7 @@ async fn codex_missing_glm_preserves_the_previous_provider_and_cleans_only_the_n
         server.await.unwrap(),
         vec![
             "POST /api/desktop/connections/keys HTTP/1.1",
-            "GET /v1/models HTTP/1.1",
-            "POST /api/desktop/connections/keys/9001/disable HTTP/1.1"
+            "GET /v1/models HTTP/1.1"
         ]
     );
 }
@@ -257,7 +253,7 @@ async fn codex_new_config_tracks_created_tables_without_touching_auth_json() {
         false,
     )
     .await;
-    let manager = ConnectionManager::new(root.path().join("records"), url.clone(), url);
+    let manager = support::manager(root.path().join("records"), url.clone(), url);
     manager
         .connect(context(), ToolId::Codex, &inventory, config.clone())
         .await
@@ -285,7 +281,7 @@ async fn codex_new_config_tracks_created_tables_without_touching_auth_json() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn codex_write_failure_keeps_the_previous_config_and_cleans_the_unused_key() {
+async fn codex_write_failure_keeps_the_previous_config_and_retains_the_unused_key() {
     use std::os::unix::fs::PermissionsExt;
     let root = tempdir().unwrap();
     let inventory = inventory(root.path());
@@ -300,7 +296,7 @@ async fn codex_write_failure_keeps_the_previous_config_and_cleans_the_unused_key
         false,
     )
     .await;
-    let manager = ConnectionManager::new(root.path().join("records"), url.clone(), url);
+    let manager = support::manager(root.path().join("records"), url.clone(), url);
     let result = manager
         .connect(context(), ToolId::Codex, &inventory, config.clone())
         .await;
@@ -310,6 +306,6 @@ async fn codex_write_failure_keeps_the_previous_config_and_cleans_the_unused_key
     assert!(manager.list().unwrap().is_empty());
     assert_eq!(
         server.await.unwrap().last().unwrap(),
-        "POST /api/desktop/connections/keys/9001/disable HTTP/1.1"
+        "GET /v1/models HTTP/1.1"
     );
 }

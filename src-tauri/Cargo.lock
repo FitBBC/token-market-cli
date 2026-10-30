@@ -49,8 +49,9 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "app"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
+ "anyhow",
  "serde",
  "serde_json",
  "tauri",
@@ -4211,7 +4212,7 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "tokenmarket-core"
-version = "0.1.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -4221,6 +4222,7 @@ dependencies = [
  "plist",
  "rand 0.8.8",
  "reqwest 0.12.28",
+ "ring",
  "serde",
  "serde_json",
  "serde_yaml",

@@ -1,7 +1,8 @@
+mod support;
 use serde_json::{json, Value};
 use tempfile::tempdir;
 use tokenmarket_core::{
-    connections::{ConnectContext, ConnectionManager},
+    connections::ConnectContext,
     inventory::{HostPlatform, InstallationEnvironment, ToolInventory},
     ToolId,
 };
@@ -98,6 +99,7 @@ fn inventory(root: &std::path::Path) -> ToolInventory {
 fn context() -> ConnectContext {
     ConnectContext {
         session_token: "desktop-secret".into(),
+        owner_id: "u1".into(),
         workspace_id: "42".into(),
     }
 }
@@ -122,7 +124,7 @@ async fn harness_connect_imports_every_chat_model_in_catalogue_order_and_preserv
     .unwrap();
     let catalogue = json!({"data":[{"id":"zeta","model_types":["TEXT_GENERATION"],"context_window_tokens":65536,"max_output_tokens":8192,"input_modalities":["text","image"]},{"id":"responses-only","model_types":["IMAGE_GENERATION"]},{"id":"alpha","display_name":"Alpha","model_types":["TEXT_GENERATION"]},{"id":"missing-types"}]});
     let (url, server) = platform(catalogue.clone(), 2).await;
-    let manager = ConnectionManager::new(
+    let manager = support::manager(
         root.path().join(".tokenmarket/desktop-connections"),
         url.clone(),
         url.clone(),
@@ -191,7 +193,7 @@ async fn harness_preserves_legacy_credentials_shape_and_declares_only_real_metad
     )
     .unwrap();
     let (url,server)=platform(json!({"data":[{"id":"custom-one","model_types":["TEXT_GENERATION"]},{"id":"glm-5.3","model_types":["TEXT_GENERATION"],"context_window_tokens":0,"max_output_tokens":0}]}),2).await;
-    let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+    let manager = support::manager(root.path().join("state"), url.clone(), url);
     let summary = manager
         .connect(
             context(),
@@ -218,7 +220,7 @@ async fn harness_preserves_legacy_credentials_shape_and_declares_only_real_metad
 }
 
 #[tokio::test]
-async fn harness_catalogue_failure_keeps_both_files_and_cleans_only_new_key_once() {
+async fn harness_catalogue_failure_keeps_both_files_and_retains_new_key() {
     for catalogue in [
         json!({"data":[]}),
         json!({"data":[{"id":"glm-5.3","model_types":["IMAGE_GENERATION"]},{"id":"unknown"}]}),
@@ -233,8 +235,8 @@ async fn harness_catalogue_failure_keeps_both_files_and_cleans_only_new_key_once
         let original_credentials = "version: 1\nrefs: {OTHER_KEY: secret}\nrecords: {}\n";
         std::fs::write(&profile, original_profile).unwrap();
         std::fs::write(&credentials, original_credentials).unwrap();
-        let (url, server) = platform(catalogue, 3).await;
-        let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+        let (url, server) = platform(catalogue, 2).await;
+        let manager = support::manager(root.path().join("state"), url.clone(), url);
         assert!(manager
             .connect(
                 context(),
@@ -254,8 +256,7 @@ async fn harness_catalogue_failure_keeps_both_files_and_cleans_only_new_key_once
             server.await.unwrap(),
             vec![
                 "POST /api/desktop/connections/keys HTTP/1.1",
-                "GET /v1/models HTTP/1.1",
-                "POST /api/desktop/connections/keys/9001/disable HTTP/1.1"
+                "GET /v1/models HTTP/1.1"
             ]
         );
     }
@@ -275,7 +276,7 @@ async fn malformed_profile_or_credentials_fails_before_issuance() {
         let credentials = root.path().join(".credentials.yaml");
         std::fs::write(&profile, profile_text).unwrap();
         std::fs::write(&credentials, credentials_text).unwrap();
-        let manager = ConnectionManager::new(
+        let manager = support::manager(
             root.path().join("state"),
             "http://127.0.0.1:1".into(),
             "http://127.0.0.1:1".into(),
@@ -317,10 +318,10 @@ async fn second_file_write_failure_rolls_back_profile_and_retains_credentials() 
     std::fs::set_permissions(&home, std::fs::Permissions::from_mode(0o500)).unwrap();
     let (url, server) = platform(
         json!({"data":[{"id":"available","model_types":["TEXT_GENERATION"]}]}),
-        3,
+        2,
     )
     .await;
-    let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+    let manager = support::manager(root.path().join("state"), url.clone(), url);
     let result = manager
         .connect(
             context(),
@@ -337,7 +338,7 @@ async fn second_file_write_failure_rolls_back_profile_and_retains_credentials() 
         original_credentials
     );
     assert!(manager.list().unwrap().is_empty());
-    assert_eq!(server.await.unwrap().len(), 3);
+    assert_eq!(server.await.unwrap().len(), 2);
 }
 
 #[tokio::test]
@@ -361,7 +362,7 @@ async fn harness_disconnect_restores_both_owned_scopes_and_preserves_later_provi
         2,
     )
     .await;
-    let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+    let manager = support::manager(root.path().join("state"), url.clone(), url);
     manager
         .connect(
             context(),
@@ -426,7 +427,7 @@ async fn harness_disconnect_removes_new_owned_profile_and_versioned_credential_b
         2,
     )
     .await;
-    let manager = ConnectionManager::new(root.path().join("state"), url.clone(), url);
+    let manager = support::manager(root.path().join("state"), url.clone(), url);
     manager
         .connect(
             context(),
