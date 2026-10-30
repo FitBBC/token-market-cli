@@ -84,7 +84,16 @@ async function main() {
     assert.deepEqual([...downloaded], ['package.tgz']);
     const help = await exec(['--help']);
     assert.equal(help.status, 0, help.stderr);
-    for (const command of ['setup', 'doctor', 'test', 'keys']) assert.match(help.stdout, new RegExp(command));
+    for (const command of ['login', 'logout', 'workspace', 'connect', 'reconnect', 'disconnect', 'status', 'test']) {
+      assert.match(help.stdout, new RegExp(`^  ${command}\\s`, 'm'));
+    }
+    // Clap hides compatibility aliases in top-level help; verify them safely
+    // through subcommand help without logging in or configuring a real tool.
+    for (const alias of ['setup', 'doctor']) {
+      const result = await exec([alias, '--help']);
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /Usage: tokenmarket/);
+    }
     const invalid = await exec(['not-a-command']);
     assert.equal(invalid.status, 2, invalid.stderr);
     console.log(`npx tarball smoke test passed (${key}): version, help, invalid-command exit status.`);
