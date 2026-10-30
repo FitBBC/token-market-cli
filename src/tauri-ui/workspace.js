@@ -36,6 +36,11 @@
     return text('span', name.slice(0, 1).toUpperCase(), 'workspace-avatar');
   }
   function row(label, value) { const node = text('div', '', 'info-row'); node.append(text('span', label), text('strong', value)); return node; }
+  function formatBalance(amount) {
+    // Keep decimal strings exact, including large balances; truncate without rounding.
+    const [whole, fraction = ''] = String(amount).split('.');
+    return `${whole}.${fraction.padEnd(2, '0').slice(0, 2)}`;
+  }
   function controls() {
     const actions = text('div', '', 'inline-actions');
     const retry = button('刷新余额', () => { notice = ''; void refresh(); }); retry.dataset.workspaceRefresh = ''; retry.disabled = loading || switching;
@@ -89,7 +94,7 @@
     }
     const current = snapshot.current_workspace, user = snapshot.user;
     const name = user.display_name || user.user_name || '账号';
-    const amount = snapshot.balance ? `${snapshot.balance.currency === 'CNY' ? '¥' : `${snapshot.balance.currency} `}${snapshot.balance.amount}` : '余额暂不可用';
+    const amount = snapshot.balance ? `${snapshot.balance.currency === 'CNY' ? '¥' : `${snapshot.balance.currency} `}${formatBalance(snapshot.balance.amount)}` : '余额暂不可用';
     const header = text('header', '', 'workspace-header');
     const identityArea = text('div', '', 'workspace-identity');
     const switcher = button('', showSpaces); switcher.className = 'workspace-switch'; switcher.disabled = switching;
